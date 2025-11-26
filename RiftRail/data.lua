@@ -113,16 +113,18 @@ data:extend({
         name = "rift-rail-placer-entity",
         icon = "__RiftRail__/graphics/icon/riftrail.png",
         icon_size = 64,
-        -- [修正] 加入 placeable-off-grid，允许玩家自由移动以对齐铁轨网格
-        flags = { "placeable-neutral", "placeable-player", "player-creation", "placeable-off-grid" },
+        -- >>>>> [修改 1] >>>>>
+        -- 移除 "placeable-off-grid"，只保留基础标志
+        flags = { "placeable-neutral", "placeable-player", "player-creation" },
+        -- <<<<< [修改结束] <<<<<
         minable = { mining_time = 0.5, result = "rift-rail-placer" },
         max_health = 1000,
         -- [修正] 竖向尺寸 4x12
         collision_box = create_centered_box(3.8, 11.8),
 
         selection_box = create_centered_box(4, 12),
-        -- [修正] 强制 2x2 网格对齐，解决错位
-        build_grid_size = 2,
+        -- [修正] 强制 1x1 网格对齐，解决错位
+        build_grid_size = 1,
         picture = {
             north = sprite_down,
             south = sprite_up,
@@ -138,11 +140,10 @@ data:extend({
         name = "rift-rail-entity",
         icon = "__RiftRail__/graphics/entity.png",
         icon_size = 64,
-        -- [修正] 加入 placeable-off-grid，防止引擎自动吸附导致与铁轨网格错位
-        -- >>>>> [修改开始] >>>>>
-        -- 原代码：flags = { "placeable-neutral", "player-creation", "not-blueprintable", "placeable-off-grid" },
-        -- 修改后：移除了 "not-blueprintable"，允许生成幽灵实体
-        flags = { "placeable-neutral", "player-creation", "placeable-off-grid" },
+        -- [修改] 加入 "not-rotatable"
+        -- 这样玩家放下后就不能按 R 旋转它了 (想换方向必须拆了重放)
+        -- 这保护了内部结构 (铁轨/核心) 不会错位
+        flags = { "placeable-neutral", "player-creation", "placeable-off-grid", "not-rotatable" },
         -- <<<<< [修改结束] <<<<
 
         -- >>>>> [新增开始] >>>>>
