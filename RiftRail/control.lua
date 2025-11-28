@@ -363,8 +363,16 @@ remote.add_interface("RiftRail", {
             -- 执行传送
             player.teleport(safe_pos, struct.shell.surface)
 
-            -- 关闭 GUI
+            -- >>>>> [修改开始] >>>>>
+            -- 原代码: player.opened = nil
+            -- 新代码: 强制查找并销毁 GUI，不再依赖事件监听
+            if player.gui.screen.rift_rail_main_frame then
+                player.gui.screen.rift_rail_main_frame.destroy()
+            end
+
+            -- 清空 opened 状态，确保逻辑闭环
             player.opened = nil
+            -- <<<<< [修改结束] <<<<<
         else
             if player then player.print({ "messages.rift-rail-error-self-invalid" }) end
         end
