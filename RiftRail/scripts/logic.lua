@@ -21,8 +21,23 @@ end
 local function refresh_all_guis()
     for _, player in pairs(game.connected_players) do
         local opened = player.opened
-        if opened and opened.valid and State.get_struct(opened) then
+
+        -- 情况 1: 如果 opened 是实体 (比如其他模组直接 opened 实体，或者是兼容旧版)
+        if opened and opened.valid and opened.object_name == "LuaEntity" and State.get_struct(opened) then
             GUI.build_or_update(player, opened)
+
+            -- 情况 2: [新增] 如果 opened 是我们的 GUI Frame
+        elseif opened and opened.valid and opened.object_name == "LuaGuiElement" and opened.name == "rift_rail_main_frame" then
+            -- 从 tags 中获取 unit_number
+            local unit_number = opened.tags.unit_number
+            if unit_number then
+                -- 查找对应的实体数据
+                local struct = State.get_struct_by_unit_number(unit_number)
+                if struct and struct.shell and struct.shell.valid then
+                    -- 传入实体进行刷新
+                    GUI.build_or_update(player, struct.shell)
+                end
+            end
         end
     end
 end

@@ -4,7 +4,7 @@
 -- 更新：集成传送逻辑、补全玩家传送、事件分流
 
 -- 1. 定义调试总开关
-local DEBUG_MODE = true
+local DEBUG_MODE = false
 
 -- 2. 定义日志函数
 local function log_debug(msg)
@@ -25,18 +25,7 @@ local Logic = require("scripts.logic")
 local Schedule = require("scripts.schedule")
 local Util = require("scripts.util")
 local Teleport = require("scripts.teleport") -- [新增] 加载传送核心
--- local CybersynSE = require("scripts.cybersyn_se")               -- [新增] 引入 CybersynSE 模块
--- local CybersynScheduler = require("scripts.cybersyn_scheduler") -- [新增] 加载调度器
 
--- 4. 注入依赖
--- [新增] 初始化 CybersynSE
-
---[[ if CybersynSE.init then
-    CybersynSE.init({
-        State = State,
-        log_debug = log_debug,
-    })
-end ]]
 
 
 -- [修改] 给 Builder 注入 CybersynSE (用于拆除清理)
@@ -119,11 +108,6 @@ end)
 script.on_event(defines.events.on_tick, function(event)
     -- 1. 执行传送逻辑
     Teleport.on_tick(event)
-
-    --[[     -- 2. [新增] 执行 Cybersyn 调度逻辑
-    if CybersynScheduler.on_tick then
-        CybersynScheduler.on_tick(event)
-    end ]]
 end)
 
 -- ============================================================================
@@ -142,6 +126,8 @@ script.on_event(defines.events.on_gui_switch_state_changed, GUI.handle_switch_st
 script.on_event(defines.events.on_gui_checked_state_changed, GUI.handle_checked_state_changed)
 script.on_event(defines.events.on_gui_confirmed, GUI.handle_confirmed)
 
+-- 当玩家按 E 或 ESC 关闭窗口时触发
+script.on_event(defines.events.on_gui_closed, GUI.handle_close)
 -- ============================================================================
 -- [新增] 克隆/传送事件处理 (修复 SE 飞船移动导致的数据丢失)
 -- ============================================================================
@@ -356,13 +342,13 @@ remote.add_interface("RiftRail", {
             local offset = { x = 0, y = 0 }
 
             if dir == 0 then      -- North (开口在下) -> 传送到下方
-                offset = { x = 0, y = 8 }
-            elseif dir == 4 then  -- East (开口在左) -> 传送到左方
-                offset = { x = -8, y = 0 }
-            elseif dir == 8 then  -- South (开口在上) -> 传送到上方
                 offset = { x = 0, y = -8 }
-            elseif dir == 12 then -- West (开口在右) -> 传送到右方
+            elseif dir == 4 then  -- East (开口在左) -> 传送到左方
                 offset = { x = 8, y = 0 }
+            elseif dir == 8 then  -- South (开口在上) -> 传送到上方
+                offset = { x = 0, y = 8 }
+            elseif dir == 12 then -- West (开口在右) -> 传送到右方
+                offset = { x = -8, y = 0 }
             end
 
             local target_pos = {

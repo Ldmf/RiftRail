@@ -115,66 +115,6 @@ local function log_tp(msg)
     log_debug("[Teleport] " .. msg)
 end
 
---[[ -- =================================================================================
--- Cybersyn 兼容逻辑 (照搬自传送门 Mod)
--- =================================================================================
-
--- 处理 Cybersyn 数据迁移 (在传送结束或生成新车头时调用)
-local function handle_cybersyn_migration(old_train_id, new_train, snapshot)
-    if not (remote.interfaces["cybersyn"] and remote.interfaces["cybersyn"]["write_global"]) then return end
-    if script.active_mods["space-exploration"] then return end -- SE 模式下 Cybersyn 自带兼容，无需干预
-
-    local c_train = snapshot
-    if not c_train then return end
-
-    log_tp("Cybersyn 兼容: 开始为新火车 " .. new_train.id .. " (旧ID: " .. old_train_id .. ") 注入数据...")
-
-    -- 1. 更新实体引用并搬家
-    c_train.entity = new_train
-    remote.call("cybersyn", "write_global", c_train, "trains", new_train.id)
-    remote.call("cybersyn", "write_global", nil, "trains", old_train_id)
-
-    -- 2. 强制清除 "正在传送" 标签
-    remote.call("cybersyn", "write_global", nil, "trains", new_train.id, "se_is_being_teleported")
-    log_tp("Cybersyn 兼容: 标签清除请求已发送。")
-
-    -- 3. 时刻表补全 (Rail Patch) - 修复回库逻辑
-    local schedule = new_train.schedule
-    if schedule and schedule.records and c_train.status then
-        local current_record = schedule.records[schedule.current]
-        if current_record and current_record.station then
-            local target_station_id = nil
-            -- 状态映射: 1=TO_P, 3=TO_R, 5=TO_D, 6=TO_D_BYPASS
-            if c_train.status == 1 then target_station_id = c_train.p_station_id end
-            if c_train.status == 3 then target_station_id = c_train.r_station_id end
-            if c_train.status == 5 or c_train.status == 6 then target_station_id = c_train.depot_id end
-
-            if target_station_id then
-                local st_data = nil
-                if c_train.status == 5 or c_train.status == 6 then
-                    st_data = remote.call("cybersyn", "read_global", "depots", target_station_id)
-                else
-                    st_data = remote.call("cybersyn", "read_global", "stations", target_station_id)
-                end
-
-                if st_data and st_data.entity_stop and st_data.entity_stop.valid then
-                    local rail = st_data.entity_stop.connected_rail
-                    -- 仅当目标铁轨在新地表时才补全
-                    if rail and rail.surface == new_train.front_stock.surface then
-                        table.insert(schedule.records, schedule.current, {
-                            rail = rail,
-                            rail_direction = st_data.entity_stop.connected_rail_direction,
-                            temporary = true,
-                            wait_conditions = { { type = "time", ticks = 1 } }
-                        })
-                        new_train.schedule = schedule
-                        log_tp("Cybersyn 兼容: Rail Patch 补全成功。")
-                    end
-                end
-            end
-        end
-    end
-end ]]
 
 -- =================================================================================
 -- 核心传送逻辑
@@ -221,11 +161,7 @@ local function finish_teleport(entry_struct, exit_struct)
         end
         -- <<<<< [新增结束] <<<<<
 
-        --[[         -- 3. Cybersyn 数据恢复
-        if exit_struct.cybersyn_snapshot and exit_struct.old_train_id then
-            handle_cybersyn_migration(exit_struct.old_train_id, final_train, exit_struct.cybersyn_snapshot)
-            exit_struct.cybersyn_snapshot = nil
-        end ]]
+
 
         -- 4. SE 事件触发 (Finished)
         if SE_TELEPORT_FINISHED_EVENT_ID and exit_struct.old_train_id then
@@ -237,25 +173,6 @@ local function finish_teleport(entry_struct, exit_struct)
                 teleporter = entry_struct.shell
             })
         end
-
-        --[[         -- >>>>> [新增修复] 时刻表索引保护 (复刻传送门逻辑) >>>>>
-        if exit_struct.saved_schedule_index then
-            local sched = final_train.schedule
-            -- 检查索引是否被引擎重置了 (例如重置回了1)
-            if sched and sched.records and sched.current ~= exit_struct.saved_schedule_index then
-                -- 如果当前记录数足够，强制恢复索引
-                if #sched.records >= exit_struct.saved_schedule_index then
-                    log_tp("时刻表保护: 检测到索引重置 (" .. sched.current .. ")，强制恢复为: " .. exit_struct.saved_schedule_index)
-                    sched.current = exit_struct.saved_schedule_index
-                    final_train.schedule = sched
-                else
-                    log_tp("时刻表保护: 警告 - 记录数不足，无法恢复索引。")
-                end
-            end
-            -- 清理保存的索引
-            exit_struct.saved_schedule_index = nil
-        end
-        -- <<<<< [修复结束] <<<<< ]]
     end
 
     -- 5. 重置状态变量
@@ -404,16 +321,7 @@ function Teleport.teleport_next(entry_struct)
         exit_struct.saved_speed = carriage.train.speed
         exit_struct.old_train_id = carriage.train.id
 
-        --[[         -- [Cybersyn] 抢救数据快照
-        if remote.interfaces["cybersyn"] and remote.interfaces["cybersyn"]["read_global"] then
-            -- 标记免死金牌
-            remote.call("cybersyn", "write_global", true, "trains", carriage.train.id, "se_is_being_teleported")
-            local status, c_data = pcall(remote.call, "cybersyn", "read_global", "trains", carriage.train.id)
-            if status and c_data then
-                exit_struct.cybersyn_snapshot = c_data
-                log_tp("Cybersyn 快照保存成功。")
-            end
-        end ]]
+
 
         -- [SE] Started 事件
         if SE_TELEPORT_STARTED_EVENT_ID then

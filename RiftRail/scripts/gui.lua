@@ -96,18 +96,15 @@ function GUI.build_or_update(player, entity)
     local player_settings = storage.rift_rail_player_settings[player.index]
 
     -- 3. 创建/清理 GUI
-    -- [核心] 使用 relative 容器，而不是 screen
-    local gui = player.gui.relative
-    if gui.rift_rail_main_frame then gui.rift_rail_main_frame.destroy() end
+    -- 1. 改用 screen (屏幕) 容器，不再使用 relative
+    local gui = player.gui.screen -- <--- 改动点 1
 
-    -- [核心] 锚定到箱子界面 (container_gui)
-    -- [修正] 增加 names 字段，指定只挂载到 "rift-rail-core" 实体上
-    -- 这样打开普通箱子时，这个 GUI 就不会出现
-    local anchor = {
-        gui = defines.relative_gui_type.container_gui,
-        position = defines.relative_gui_position.right,
-        names = { "rift-rail-core" } -- <=== 加上这一行！
-    }
+    -- 2. 清理旧窗口 (防止重复打开)
+    if gui.rift_rail_main_frame then
+        gui.rift_rail_main_frame.destroy()
+    end
+
+
 
     -- [修改] 动态标题栏 (逻辑修正：如果没有自定义图标，强制显示默认图标)
 
@@ -120,17 +117,38 @@ function GUI.build_or_update(player, entity)
     end
 
     -- 3. 拼接最终标题: [图标] 名字 (ID: 123)
-    local title_caption = title_icon .. " " .. my_data.name .. " (ID: " .. my_data.id .. ")"
+    -- >>>>> [修改开始] >>>>>
+    -- 使用 Factorio 的本地化拼接语法 {"", A, B, C}
+    -- 这里的 {"entity-name.rift-rail-core"} 会自动读取你的 locale 文件显示为 "裂隙铁路控制核心"
+    local title_caption = {
+        "",                               -- 空字符串开头，表示这是一个拼接列表
+        title_icon,                       -- 图标字符串 "[item=...]"
+        " ",                              -- 空格
+        { "entity-name.rift-rail-core" }, -- 读取 locale 中的中文名
+        " (ID: " .. my_data.id .. ")"     -- 后面拼接 ID
+    }
+
+    if log_debug then log_debug("GUI: 标题已更新为本地化名称 (ID: " .. my_data.id .. ")") end
+    -- <<<<< [修改结束] <<<<<
 
     local frame = gui.add({
         type = "frame",
         name = "rift_rail_main_frame",
         direction = "vertical",
-        anchor = anchor,
         caption = title_caption -- 使用带图标的标题
     })
-    -- 存储 ID 用于事件处理
+
+    -- 6. [新增] 让窗口自动居中
+    frame.auto_center = true
+
+    -- 7. [核心] 存储 Unit Number，用于后续逻辑
     frame.tags = { unit_number = my_data.unit_number }
+
+    -- 8. [关键一步] 欺骗引擎：告诉游戏“现在玩家打开的是这个窗口”
+    -- 这会自动关闭原本的箱子界面！
+    player.opened = frame
+
+    if log_debug then log_debug("GUI: 已创建独立窗口并接管 player.opened") end
 
     local inner_flow = frame.add({ type = "flow", direction = "vertical" })
     inner_flow.style.padding = 8
@@ -308,7 +326,7 @@ function GUI.build_or_update(player, entity)
             local preview_frame = inner_flow.add({ type = "frame", style = "inside_shallow_frame" })
             -- 设置最小尺寸，防止太小
             preview_frame.style.minimal_width = 280
-            preview_frame.style.minimal_height = 200
+            preview_frame.style.minimal_height = 400
             -- 开启拉伸，填满剩余空间
             preview_frame.style.horizontally_stretchable = true
             preview_frame.style.vertically_stretchable = true
@@ -336,8 +354,9 @@ function GUI.handle_click(event)
     local player = game.get_player(event.player_index)
     local el_name = event.element.name
 
-    -- [核心] 查找 relative GUI
-    local frame = player.gui.relative.rift_rail_main_frame
+
+
+    local frame = player.gui.screen.rift_rail_main_frame
     if not (frame and frame.valid) then return end
 
     local unit_number = frame.tags.unit_number
@@ -416,7 +435,7 @@ function GUI.handle_switch_state_changed(event)
     local player = game.get_player(event.player_index)
     local el_name = event.element.name
 
-    local frame = player.gui.relative.rift_rail_main_frame
+    local frame = player.gui.screen.rift_rail_main_frame
     if not (frame and frame.valid) then return end
     -- [修正]
     local my_data = State.get_struct_by_unit_number(frame.tags.unit_number)
@@ -439,7 +458,7 @@ function GUI.handle_checked_state_changed(event)
         local player = game.get_player(event.player_index)
         if storage.rift_rail_player_settings[player.index] then
             storage.rift_rail_player_settings[player.index].show_preview = event.element.state
-            local frame = player.gui.relative.rift_rail_main_frame
+            local frame = player.gui.screen.rift_rail_main_frame
             if frame then
                 -- [修正]
                 local my_data = State.get_struct_by_unit_number(frame.tags.unit_number)
@@ -453,7 +472,7 @@ function GUI.handle_confirmed(event)
     if not (event.element and event.element.valid) then return end
     if event.element.name == "rift_rail_rename_textfield" then
         local player = game.get_player(event.player_index)
-        local frame = player.gui.relative.rift_rail_main_frame
+        local frame = player.gui.screen.rift_rail_main_frame
         if not frame then return end
 
         -- 模拟点击确认
@@ -464,5 +483,18 @@ function GUI.handle_confirmed(event)
         GUI.handle_click(fake_event)
     end
 end
+
+-- >>>>> [新增函数] 处理关闭事件 >>>>>
+function GUI.handle_close(event)
+    -- event.element 是刚刚被关闭的那个界面元素
+    local element = event.element
+
+    if element and element.valid and element.name == "rift_rail_main_frame" then
+        if log_debug then log_debug("GUI: 检测到关闭事件，销毁窗口。") end
+        element.destroy()
+    end
+end
+
+-- <<<<< [新增结束] <<<<<
 
 return GUI
