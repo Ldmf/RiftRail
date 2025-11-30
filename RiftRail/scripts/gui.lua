@@ -212,6 +212,9 @@ function GUI.build_or_update(player, entity)
     -- 填充列表 & 自动选中
     local dropdown_items = {}
     local selected_idx = 0
+    -- >>>>> [新增] 创建一个表来存 ID >>>>>
+    local dropdown_ids = {}
+    -- <<<<< [新增结束] <<<<<
     local all_portals = State.get_all_structs()
 
     for _, p_data in pairs(all_portals) do
@@ -239,6 +242,9 @@ function GUI.build_or_update(player, entity)
             }
             -- <<<<< [修改结束] <<<<<
             table.insert(dropdown_items, item_text)
+            -- >>>>> [新增] 同步记录 ID >>>>>
+            table.insert(dropdown_ids, p_data.id)
+            -- <<<<< [新增结束] <<<<<
 
             -- [修复] 如果这个就是当前配对的对象，记录索引
             if my_data.paired_to_id == p_data.id then
@@ -247,6 +253,11 @@ function GUI.build_or_update(player, entity)
         end
     end
     dropdown.items = dropdown_items
+
+    -- >>>>> [新增] 将 ID 列表存入控件的 tags 属性 >>>>>
+    dropdown.tags = { ids = dropdown_ids }
+    -- <<<<< [新增结束] <<<<<
+
     -- [修复] 设置选中项
     if selected_idx > 0 then
         dropdown.selected_index = selected_idx
@@ -402,8 +413,16 @@ function GUI.handle_click(event)
         dropdown = find_dropdown(frame)
 
         if dropdown and dropdown.selected_index > 0 then
-            local selected_str = dropdown.items[dropdown.selected_index]
-            local target_id = tonumber(string.match(selected_str, "ID:(%d+)"))
+            -- [删除旧代码]
+            -- local selected_str = dropdown.items[dropdown.selected_index]
+            -- local target_id = tonumber(string.match(selected_str, "ID:(%d+)"))
+
+            -- >>>>> [修改] 直接从 tags 读取 ID (安全且支持本地化) >>>>>
+            local target_id = nil
+            if dropdown.tags and dropdown.tags.ids then
+                target_id = dropdown.tags.ids[dropdown.selected_index]
+            end
+            -- <<<<< [修改结束] <<<<<
             if target_id then
                 remote.call("RiftRail", "pair_portals", player.index, my_data.id, target_id)
             end
