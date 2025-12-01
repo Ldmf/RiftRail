@@ -28,11 +28,10 @@ local Teleport = require("scripts.teleport") -- [新增] 加载传送核心
 
 
 
--- [修改] 给 Builder 注入 CybersynSE (用于拆除清理)
+
 if Builder.init then
     Builder.init({
         log_debug = log_debug,
-        -- CybersynSE = CybersynSE -- [新增] 注入
     })
 end
 
@@ -54,13 +53,12 @@ if Teleport.init then
     })
 end
 
--- [修改] 给 Logic 注入 CybersynSE (用于GUI开关)
+
 if Logic.init then
     Logic.init({
         State = State,
         GUI = GUI,
         log_debug = log_debug,
-        -- CybersynSE = CybersynSE -- [新增] 注入
     })
 end
 
