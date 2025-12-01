@@ -303,7 +303,7 @@ function Teleport.teleport_next(entry_struct)
         return
     end
 
-    -- >>>>> [开始插入] 动态拼接检测 >>>>>
+    -- 动态拼接检测
     -- 询问引擎：当前位置是否已经空出来，可以放置新车厢了？
     -- 如果前车还没被拖船拉远，这里会返回 false
     local can_place = exit_struct.surface.can_place_entity {
@@ -316,7 +316,7 @@ function Teleport.teleport_next(entry_struct)
     if not can_place then
         return -- 位置没空出来，跳过本次循环，等待下一帧
     end
-    -- <<<<< [插入结束] <<<<<
+
 
     -- 开始传送当前车厢
     log_tp("正在传送车厢: " .. carriage.name)
@@ -398,7 +398,7 @@ function Teleport.teleport_next(entry_struct)
     end
     -- <<<<< [修改结束] <<<<<
 
-    -- 生成新车厢 (保持不变)
+    -- 生成新车厢
     local new_carriage = exit_struct.surface.create_entity {
         name = carriage.name,
         position = spawn_pos,
@@ -422,7 +422,7 @@ function Teleport.teleport_next(entry_struct)
     new_carriage.backer_name = carriage.backer_name or ""
     if carriage.color then new_carriage.color = carriage.color end
 
-    -- >>>>> [新增 SE 策略] 2. 强制连接并立刻恢复进度 >>>>>
+
     -- 尝试与上一节车厢强制连接 (防止引擎把它们当成两列车处理)
     if exit_struct.carriage_ahead and exit_struct.carriage_ahead.valid then
         new_carriage.connect_rolling_stock(defines.rail_direction.front)
@@ -433,9 +433,9 @@ function Teleport.teleport_next(entry_struct)
     if saved_ahead_index then
         new_carriage.train.go_to_station(saved_ahead_index)
     end
-    -- <<<<< [新增结束] <<<<<
 
-    -- [修正] 司机转移逻辑 (严格照搬传送门)
+
+    -- 司机转移逻辑 (严格照搬传送门)
     local driver = carriage.get_driver()
     if driver then
         carriage.set_driver(nil) -- 第一步：必须先从旧车“下车”，防止被留在入口
@@ -451,7 +451,7 @@ function Teleport.teleport_next(entry_struct)
         end
     end
 
-    -- >>>>> [新增修复] 转移时刻表与保存索引 >>>>>
+    -- [新增修复] 转移时刻表与保存索引
     if not entry_struct.carriage_ahead then
         -- 1. 获取带图标的真实站名 (解决比对失败问题)
         local real_station_name = get_real_station_name(entry_struct)
@@ -466,9 +466,6 @@ function Teleport.teleport_next(entry_struct)
         -- transfer_schedule 内部已经调用了 go_to_station，所以现在的 current 是正确的下一站
     end
 
-
-    -- <<<<< [修复结束] <<<<<
-
     -- 销毁旧车厢
     carriage.destroy()
 
@@ -480,12 +477,12 @@ function Teleport.teleport_next(entry_struct)
     if next_carriage and next_carriage.valid then
         entry_struct.carriage_behind = next_carriage
 
-        -- >>>>> [新增修复] A. 在生成/连接拖船前，保存刚才设置好的时刻表索引 >>>>>
+        --  A. 在生成/连接拖船前，保存刚才设置好的时刻表索引 >>>>>
         local index_before_tug = nil
         if new_carriage.train.schedule then
             index_before_tug = new_carriage.train.schedule.current
         end
-        -- <<<<< [新增结束] <<<<<
+
 
         -- 生成新拖船 (Tug)
         local tug_pos = Util.vectors_add(exit_struct.shell.position, geo.tug_offset)
@@ -499,16 +496,15 @@ function Teleport.teleport_next(entry_struct)
             tug.destructible = false
             exit_struct.tug = tug
 
-            -- [新增] 强制连接逻辑 (这行代码会导致重置！)
+            -- 强制连接逻辑 (这行代码会导致重置！)
             tug.connect_rolling_stock(defines.rail_direction.front)
             tug.connect_rolling_stock(defines.rail_direction.back)
 
-            -- >>>>> [新增修复] B. 拖船连接导致重置，立刻恢复索引 >>>>>
+            -- B. 拖船连接导致重置，立刻恢复索引 >>>>>
             if index_before_tug then
                 new_carriage.train.go_to_station(index_before_tug)
                 log_tp("拖船连接修正: 索引已从重置状态恢复为 " .. index_before_tug)
             end
-            -- <<<<< [新增结束] <<<<<
         end
     else
         log_tp("最后一节车厢传送完毕。")
@@ -587,8 +583,6 @@ function Teleport.on_collider_died(event)
     -- [修改] 优先用撞击者作为第一节
     struct.carriage_behind = event.cause or train.front_stock
 
-    -- [删除] 这里之前添加的 struct.entry_speed_sign 相关代码请全部删除
-    -- 我们不再在撞击瞬间记录方向，改为在 manage_speed 中实时计算
 
     -- 启动 active 标记，让 on_tick 接管
     struct.is_teleporting = true
@@ -642,11 +636,6 @@ function Teleport.manage_speed(struct)
                 -- 如果拖船顺接(1)，列车正方向就是出口 -> 正速度
                 -- 如果拖船反接(-1)，列车正方向是死胡同 -> 负速度(倒车)
                 required_sign = link_sign
-
-                --[[                 -- [调试打印] 观察数值，测试成功后可删除
-                game.print("[Debug] ID:" ..
-                    train_exit.id ..
-                    " | 拖船Link: " .. link_sign .. " | 目标Sign: " .. required_sign .. " | 当前Speed: " .. train_exit.speed) ]]
             else
                 -- 异常保护: 如果没有拖船，回退到 Orientation 算法
                 local geo_exit = GEOMETRY[exit_struct.shell.direction] or GEOMETRY[0]

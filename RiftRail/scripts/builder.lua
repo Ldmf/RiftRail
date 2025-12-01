@@ -2,12 +2,11 @@
 -- 功能：移除所有多余的方向映射，直接使用 Factorio 标准 16方向制 (0, 4, 8, 12)
 
 local Builder = {}
--- local CybersynSE = nil -- [新增]
+
 local log_debug = function() end
 
 function Builder.init(deps)
     if deps.log_debug then log_debug = deps.log_debug end
-    -- CybersynSE = deps.CybersynSE -- [新增]
 end
 
 -- ============================================================================
@@ -18,7 +17,7 @@ end
 local MASTER_LAYOUT = {
     -- 铁轨 (竖向排列)
     rails = {
-        -- [新增] 延伸接口 (舌头)
+        -- 延伸接口 (舌头)
         -- y=6 (这节铁轨覆盖 y=5 到 y=7)
         -- 这样 y=5 的信号灯就正好位于它和下一节铁轨的中间，位置完美！
         { x = 0, y = 6 },
@@ -45,7 +44,7 @@ local MASTER_LAYOUT = {
     blocker = { x = 0, y = -6 },
     collider = { x = 0, y = -2 },
     core = { x = 0, y = 0 },
-    -- [新增] 照明灯 (放在中心，照亮整个建筑)
+    -- 照明灯 (放在中心，照亮整个建筑)
     lamp = { x = 0, y = 0 }
 }
 
@@ -137,7 +136,6 @@ function Builder.on_built(event)
     end
 
     if not shell then return end
-    -- [删除这一行] ！！！
     -- shell.destructible = false
     -- 让 shell 保持默认的可破坏状态，这样虫子能咬它，你也能修它。
 
@@ -179,7 +177,7 @@ function Builder.on_built(event)
         force = force
     }
 
-    -- [修改] 拼接车站显示名称 (逻辑参考 Logic.lua)
+    -- 拼接车站显示名称 (逻辑参考 Logic.lua)
     local master_icon = "[item=rift-rail-placer] "
     local user_icon_str = ""
     if recovered_icon then
@@ -229,7 +227,7 @@ function Builder.on_built(event)
     }
     table.insert(children, lamp)
 
-    -- >>>>> [新增] 批量设置内部组件属性 >>>>>
+    -- 批量设置内部组件属性
     for _, child in pairs(children) do
         if child.valid then
             -- 特例：碰撞器必须是"脆皮"，否则火车撞上去不会触发传送
@@ -242,7 +240,7 @@ function Builder.on_built(event)
             end
         end
     end
-    -- <<<<< [新增结束] <<<<<
+
 
     -- [修改] 存储数据 (应用恢复的属性)
     storage.rift_rails[shell.unit_number] = {
@@ -295,11 +293,11 @@ function Builder.on_destroy(event)
 
     -- 过滤非本模组实体
     if not string.find(entity.name, "rift%-rail") then return end
-    -- >>>>> [新增] 特例：碰撞器死亡是传送触发信号，绝对不能触发拆除逻辑！ <<<<<
+    -- 特例：碰撞器死亡是传送触发信号，绝对不能触发拆除逻辑！
     if entity.name == "rift-rail-collider" then
         return
     end
-    -- <<<<< [新增结束] <<<<<
+
     local surface = entity.surface
     local center_pos = entity.position
     local target_id = nil
@@ -345,14 +343,7 @@ function Builder.on_destroy(event)
         log_debug(">>> [拆除-查表成功] ID: " .. target_id)
         local data = storage.rift_rails[target_id]
 
-        --[[         -- >>>>> [新增] Cybersyn 数据清理 >>>>>
-        -- 如果启用了 SE 兼容模式，通知它清理残留数据
-        if CybersynSE and CybersynSE.on_portal_destroyed then
-            CybersynSE.on_portal_destroyed(data)
-        end
-        -- <<<<< [新增结束] <<<<< ]]
-
-        -- >>>>> [修正] 拆除时的配对清理逻辑 >>>>>
+        -- 拆除时的配对清理逻辑
         if data.paired_to_id then
             local partner = nil
             -- 1. 必须遍历查找，因为 Key 是 UnitNumber，而我们要找的是 Custom ID
@@ -370,13 +361,13 @@ function Builder.on_destroy(event)
                 -- 3. 强制重置为无状态
                 partner.mode = "neutral"
 
-                -- >>>>> [新增修改] 清理遗留的拖船 (Tug) >>>>>
+                -- 清理遗留的拖船 (Tug)
                 if partner.tug and partner.tug.valid then
                     log_debug("Builder [Cleanup]: 检测到出口侧有残留拖船，正在销毁...")
                     partner.tug.destroy()
                     partner.tug = nil
                 end
-                -- <<<<< [修改结束] <<<<<
+
 
                 -- 4. 物理清理: 删掉它的碰撞器
                 if partner.shell and partner.shell.valid then
@@ -394,7 +385,7 @@ function Builder.on_destroy(event)
                 -- 玩家下次打开或者 GUI 自动刷新时就会显示 "未连接"，而不是报错)
             end
         end
-        -- <<<<< [修正结束] <<<<<
+
 
         -- [兼容性修复] 确定子实体列表和主体
         -- 如果 data.children 存在，说明是新结构；否则假设 data 本身就是列表（旧结构）

@@ -96,17 +96,17 @@ function GUI.build_or_update(player, entity)
     local player_settings = storage.rift_rail_player_settings[player.index]
 
     -- 3. 创建/清理 GUI
-    -- 1. 改用 screen (屏幕) 容器，不再使用 relative
+    -- 3.1. 改用 screen (屏幕) 容器，不再使用 relative
     local gui = player.gui.screen -- <--- 改动点 1
 
-    -- 2. 清理旧窗口 (防止重复打开)
+    -- 3.2. 清理旧窗口 (防止重复打开)
     if gui.rift_rail_main_frame then
         gui.rift_rail_main_frame.destroy()
     end
 
 
 
-    -- [修改] 动态标题栏 (逻辑修正：如果没有自定义图标，强制显示默认图标)
+    -- 动态标题栏 (逻辑修正：如果没有自定义图标，强制显示默认图标)
 
     -- 1. 预设默认图标
     local title_icon = "[item=rift-rail-placer]"
@@ -117,9 +117,9 @@ function GUI.build_or_update(player, entity)
     end
 
     -- 3. 拼接最终标题: [图标] 名字 (ID: 123)
-    -- >>>>> [修改开始] >>>>>
+
     -- 使用 Factorio 的本地化拼接语法 {"", A, B, C}
-    -- 这里的 {"entity-name.rift-rail-core"} 会自动读取你的 locale 文件显示为 "裂隙铁路控制核心"
+    -- 这里的 {"entity-name.rift-rail-core"} 会自动读取 locale 文件显示为 "裂隙铁路控制核心"
     local title_caption = {
         "",                               -- 空字符串开头，表示这是一个拼接列表
         title_icon,                       -- 图标字符串 "[item=...]"
@@ -129,7 +129,7 @@ function GUI.build_or_update(player, entity)
     }
 
     if log_debug then log_debug("GUI: 标题已更新为本地化名称 (ID: " .. my_data.id .. ")") end
-    -- <<<<< [修改结束] <<<<<
+
 
     local frame = gui.add({
         type = "frame",
@@ -138,7 +138,7 @@ function GUI.build_or_update(player, entity)
         caption = title_caption -- 使用带图标的标题
     })
 
-    -- 6. [新增] 让窗口自动居中
+    -- 6. 让窗口自动居中
     frame.auto_center = true
 
     -- 7. [核心] 存储 Unit Number，用于后续逻辑
@@ -192,13 +192,11 @@ function GUI.build_or_update(player, entity)
                 style = "bold_label"
             })
         else
-            -- >>>>> [修改] 本地化错误提示 >>>>>
             status_flow.add({
                 type = "label",
                 caption = { "gui.rift-rail-status-error-partner-missing" },
                 style = "bold_red_label"
             })
-            -- <<<<< [修改结束] <<<<<
         end
     else
         status_flow.add({ type = "label", caption = { "gui.rift-rail-status-unpaired" }, style = "bold_label" })
@@ -212,9 +210,9 @@ function GUI.build_or_update(player, entity)
     -- 填充列表 & 自动选中
     local dropdown_items = {}
     local selected_idx = 0
-    -- >>>>> [新增] 创建一个表来存 ID >>>>>
+    -- 创建一个表来存 ID
     local dropdown_ids = {}
-    -- <<<<< [新增结束] <<<<<
+
     local all_portals = State.get_all_structs()
 
     for _, p_data in pairs(all_portals) do
@@ -224,7 +222,7 @@ function GUI.build_or_update(player, entity)
             if p_data.icon and p_data.icon.name then
                 icon_str = "[" .. p_data.icon.type .. "=" .. p_data.icon.name .. "] "
             end
-            -- >>>>> [修改] 使用本地化键值 >>>>>
+
             local mode_key = "gui.rift-rail-mode-short-unknown"
             if p_data.mode == "entry" then mode_key = "gui.rift-rail-mode-short-entry" end
             if p_data.mode == "exit" then mode_key = "gui.rift-rail-mode-short-exit" end
@@ -240,13 +238,13 @@ function GUI.build_or_update(player, entity)
                 { mode_key }, -- 插入本地化键
                 " [" .. p_data.surface.name .. "]"
             }
-            -- <<<<< [修改结束] <<<<<
-            table.insert(dropdown_items, item_text)
-            -- >>>>> [新增] 同步记录 ID >>>>>
-            table.insert(dropdown_ids, p_data.id)
-            -- <<<<< [新增结束] <<<<<
 
-            -- [修复] 如果这个就是当前配对的对象，记录索引
+            table.insert(dropdown_items, item_text)
+            -- 同步记录 ID
+            table.insert(dropdown_ids, p_data.id)
+
+
+            -- 如果这个就是当前配对的对象，记录索引
             if my_data.paired_to_id == p_data.id then
                 selected_idx = #dropdown_items
             end
@@ -254,11 +252,11 @@ function GUI.build_or_update(player, entity)
     end
     dropdown.items = dropdown_items
 
-    -- >>>>> [新增] 将 ID 列表存入控件的 tags 属性 >>>>>
+    -- 将 ID 列表存入控件的 tags 属性
     dropdown.tags = { ids = dropdown_ids }
-    -- <<<<< [新增结束] <<<<<
 
-    -- [修复] 设置选中项
+
+    -- 设置选中项
     if selected_idx > 0 then
         dropdown.selected_index = selected_idx
     end
@@ -342,17 +340,17 @@ function GUI.build_or_update(player, entity)
     if my_data.paired_to_id and player_settings.show_preview then
         local partner = State.get_struct_by_id(my_data.paired_to_id)
         if partner and partner.shell and partner.shell.valid then
-            -- [新增] 标题 Label
+            -- 标题 Label
             inner_flow.add({
                 type = "label",
                 style = "frame_title",
-                -- >>>>> [修改] 本地化预览标题 >>>>>
+                -- 本地化预览标题 >>>>>
                 -- 对应 locale: rift-rail-preview-title=远程预览: __1__ [__2__]
                 caption = { "gui.rift-rail-preview-title", partner.name, partner.shell.surface.name }
-                -- <<<<< [修改结束] <<<<<
+
             }).style.left_padding = 8
 
-            -- [修正] 预览框 (inside_shallow_frame) + 拉伸属性
+            -- 预览框 (inside_shallow_frame) + 拉伸属性
             local preview_frame = inner_flow.add({ type = "frame", style = "inside_shallow_frame" })
             -- 设置最小尺寸，防止太小
             preview_frame.style.minimal_width = 280
@@ -361,7 +359,7 @@ function GUI.build_or_update(player, entity)
             preview_frame.style.horizontally_stretchable = true
             preview_frame.style.vertically_stretchable = true
 
-            -- [修正] 摄像头
+            -- 摄像头
             local cam = preview_frame.add({
                 type = "camera",
                 position = partner.shell.position,
@@ -413,16 +411,12 @@ function GUI.handle_click(event)
         dropdown = find_dropdown(frame)
 
         if dropdown and dropdown.selected_index > 0 then
-            -- [删除旧代码]
-            -- local selected_str = dropdown.items[dropdown.selected_index]
-            -- local target_id = tonumber(string.match(selected_str, "ID:(%d+)"))
-
-            -- >>>>> [修改] 直接从 tags 读取 ID (安全且支持本地化) >>>>>
+            -- 直接从 tags 读取 ID (安全且支持本地化)
             local target_id = nil
             if dropdown.tags and dropdown.tags.ids then
                 target_id = dropdown.tags.ids[dropdown.selected_index]
             end
-            -- <<<<< [修改结束] <<<<<
+
             if target_id then
                 remote.call("RiftRail", "pair_portals", player.index, my_data.id, target_id)
             end
@@ -522,7 +516,7 @@ function GUI.handle_confirmed(event)
     end
 end
 
--- >>>>> [新增函数] 处理关闭事件 >>>>>
+-- 处理关闭事件
 function GUI.handle_close(event)
     -- event.element 是刚刚被关闭的那个界面元素
     local element = event.element
@@ -532,7 +526,5 @@ function GUI.handle_close(event)
         element.destroy()
     end
 end
-
--- <<<<< [新增结束] <<<<<
 
 return GUI

@@ -341,13 +341,13 @@ remote.add_interface("RiftRail", {
             local dir = struct.shell.direction
             local offset = { x = 0, y = 0 }
 
-            if dir == 0 then      -- North (开口在下) -> 传送到下方
+            if dir == 0 then      -- North (开口在下) -> 传送到上方
                 offset = { x = 0, y = -8 }
-            elseif dir == 4 then  -- East (开口在左) -> 传送到左方
+            elseif dir == 4 then  -- East (开口在左) -> 传送到右方
                 offset = { x = 8, y = 0 }
-            elseif dir == 8 then  -- South (开口在上) -> 传送到上方
+            elseif dir == 8 then  -- South (开口在上) -> 传送到下方
                 offset = { x = 0, y = 8 }
-            elseif dir == 12 then -- West (开口在右) -> 传送到右方
+            elseif dir == 12 then -- West (开口在右) -> 传送到左方
                 offset = { x = -8, y = 0 }
             end
 
@@ -363,8 +363,6 @@ remote.add_interface("RiftRail", {
             -- 执行传送
             player.teleport(safe_pos, struct.shell.surface)
 
-            -- >>>>> [修改开始] >>>>>
-            -- 原代码: player.opened = nil
             -- 新代码: 强制查找并销毁 GUI，不再依赖事件监听
             if player.gui.screen.rift_rail_main_frame then
                 player.gui.screen.rift_rail_main_frame.destroy()

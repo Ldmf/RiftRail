@@ -23,7 +23,7 @@ local function log_schedule(message)
     log_debug("[Schedule] " .. message)
 end
 
--- (原 set_debug_mode 函数已移除，改用上述 init 模式统一管理)
+
 
 --- 核心函数：转移时刻表和中断机制 (v2.0 重构版)
 -- @param old_train LuaTrain: 即将被销毁的、进入传送门的旧火车实体
