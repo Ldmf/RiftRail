@@ -4,7 +4,7 @@
 local Logic = {}
 local State = nil
 local GUI = nil
--- local CybersynSE = nil -- [新增] 本地变量
+local CybersynSE = nil -- [新增] 本地变量
 local log_debug = function() end
 
 
@@ -12,7 +12,7 @@ function Logic.init(deps)
     State = deps.State
     GUI = deps.GUI
     log_debug = deps.log_debug
-    -- CybersynSE = deps.CybersynSE -- [新增] 获取依赖
+    CybersynSE = deps.CybersynSE -- [新增] 获取依赖
 end
 
 -- ============================================================================
@@ -271,7 +271,7 @@ function Logic.open_remote_view(player_index, portal_id)
 end
 
 -- ============================================================================
--- 6. [修改] Cybersyn 开关控制 (占位符功能)
+-- 6. [修改] Cybersyn 开关控制 (接入真实逻辑)
 -- ============================================================================
 function Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
     local player = game.get_player(player_index)
@@ -279,16 +279,26 @@ function Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
 
     if not (player and my_data) then return end
 
-    -- 只更新数据和UI，不执行任何实际功能
-    my_data.cybersyn_enabled = enabled
-
-    if enabled then
-        player.print("Cybersyn 开关已打开 (占位符)")
-    else
-        player.print("Cybersyn 开关已关闭 (占位符)")
+    -- 获取配对对象
+    local partner = nil
+    if my_data.paired_to_id then
+        partner = State.get_struct_by_id(my_data.paired_to_id)
     end
 
-    -- 刷新界面以更新开关状态
+    if not partner then
+        player.print({ "messages.rift-rail-error-cybersyn-unpaired" }) -- 需要配对才能开
+        return
+    end
+
+    -- [修改] 调用兼容模块执行实际操作
+    if CybersynSE then
+        CybersynSE.update_connection(my_data, partner, enabled, player)
+        -- 注意：update_connection 内部成功后会更新 my_data.cybersyn_enabled
+    else
+        my_data.cybersyn_enabled = enabled --保底逻辑
+    end
+
+    -- 刷新界面
     refresh_all_guis()
 end
 

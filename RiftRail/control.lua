@@ -24,15 +24,23 @@ local State = require("scripts.state")
 local Logic = require("scripts.logic")
 local Schedule = require("scripts.schedule")
 local Util = require("scripts.util")
-local Teleport = require("scripts.teleport") -- [新增] 加载传送核心
-
+local Teleport = require("scripts.teleport")
+local CybersynSE = require("scripts.cybersyn_compat") -- [新增] 加载兼容模块
 
 
 -- [修改] 给 Builder 注入 CybersynSE (用于拆除清理)
 if Builder.init then
     Builder.init({
         log_debug = log_debug,
-        -- CybersynSE = CybersynSE -- [新增] 注入
+        CybersynSE = CybersynSE -- (Builder目前暂不直接调用，清理逻辑我们接管了)
+    })
+end
+
+-- [新增] 初始化 Cybersyn 模块
+if CybersynSE.init then
+    CybersynSE.init({
+        State = State,
+        log_debug = log_debug
     })
 end
 
@@ -60,7 +68,7 @@ if Logic.init then
         State = State,
         GUI = GUI,
         log_debug = log_debug,
-        -- CybersynSE = CybersynSE -- [新增] 注入
+        CybersynSE = CybersynSE -- [新增] 正式注入
     })
 end
 
@@ -87,7 +95,18 @@ local mine_events = {
     defines.events.on_robot_mined_entity,
     defines.events.script_raised_destroy
 }
-script.on_event(mine_events, Builder.on_destroy)
+-- [修改] 使用匿名函数拦截
+script.on_event(mine_events, function(event)
+    -- 1. 先通知 Cybersyn 清理连接
+    local entity = event.entity
+    if entity and entity.valid then
+        local struct = State.get_struct(entity)
+        if struct then CybersynSE.on_portal_destroyed(struct) end
+    end
+
+    -- 2. 再执行原来的销毁逻辑
+    Builder.on_destroy(event)
+end)
 
 -- C. [核心修改] 死亡事件分流 (on_entity_died)
 -- 我们需要区分是 "碰撞器被撞死(触发传送)" 还是 "建筑被打爆(触发拆除)"
@@ -100,6 +119,9 @@ script.on_event(defines.events.on_entity_died, function(event)
         Teleport.on_collider_died(event)
     else
         -- 情况2: 其他实体死亡 -> 触发拆除逻辑
+        -- [新增] 先通知 Cybersyn 清理
+        local struct = State.get_struct(entity)
+        if struct then CybersynSE.on_portal_destroyed(struct) end
         Builder.on_destroy(event)
     end
 end)
@@ -135,8 +157,22 @@ script.on_event(defines.events.on_entity_cloned, function(event)
     local new_entity = event.destination
     local old_entity = event.source
 
-    -- 1. 过滤：我们只关心主体的克隆
-    if not (new_entity and new_entity.valid and new_entity.name == "rift-rail-entity") then
+    if not (new_entity and new_entity.valid) then return end
+
+    -- [新增] 1.1 唤醒 Cybersyn 控制器 (与 Railjump 互斥)
+    if new_entity.name == "cybersyn-combinator" then
+        -- 如果安装了 Railjump (zzzzz)，我们避嫌，让他去处理
+        if script.active_mods["zzzzz"] then return end
+
+        -- 否则我们自己处理：只要是在飞船上，就唤醒
+        if string.find(new_entity.surface.name, "spaceship") then
+            script.raise_event(defines.events.script_raised_built, { entity = new_entity })
+        end
+        return -- 处理完毕，退出
+    end
+
+    -- 1.2 过滤：我们只关心主体的克隆 (原有逻辑)
+    if new_entity.name ~= "rift-rail-entity" then
         return
     end
 
@@ -185,6 +221,14 @@ script.on_event(defines.events.on_entity_cloned, function(event)
 
     -- 6. 保存新数据
     storage.rift_rails[new_entity.unit_number] = new_data
+
+    -- [新增] Cybersyn 智能迁移
+    local is_landing = false
+    local old_is_space = string.find(old_entity.surface.name, "spaceship")
+    local new_is_space = string.find(new_entity.surface.name, "spaceship")
+    if old_is_space and (not new_is_space) then is_landing = true end
+
+    CybersynSE.on_portal_cloned(old_data, storage.rift_rails[new_entity.unit_number], is_landing)
 
     -- 7. [关键] 删除旧数据
     -- 这样做是为了“欺骗” Builder.on_destroy。
