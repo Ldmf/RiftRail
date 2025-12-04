@@ -7,7 +7,6 @@ local CybersynSE = {}
 local State = nil
 local log_debug = function() end
 
-
 -- [适配] 对应 gui.lua 中的开关名称
 CybersynSE.BUTTON_NAME = "rift_rail_cybersyn_switch"
 
@@ -30,7 +29,9 @@ end
 
 function CybersynSE.init(dependencies)
     State = dependencies.State
-    if dependencies.log_debug then log_debug = dependencies.log_debug end
+    if dependencies.log_debug then
+        log_debug = dependencies.log_debug
+    end
 
     -- [修改] 这里不再进行检测！只做依赖注入。
     -- 因为此时 Cybersyn 可能还没注册接口。
@@ -39,7 +40,11 @@ end
 
 -- 用于生成 Cybersyn 数据库键值的排序函数
 local function sorted_pair_key(a, b)
-    if a < b then return a .. "|" .. b else return b .. "|" .. a end
+    if a < b then
+        return a .. "|" .. b
+    else
+        return b .. "|" .. a
+    end
 end
 
 --- 更新连接状态 (核心逻辑)
@@ -50,7 +55,9 @@ end
 function CybersynSE.update_connection(portal_struct, opposite_struct, connect, player)
     -- [修改] 使用动态检查
     if not is_cybersyn_active() then
-        if player then player.print({ "messages.rift-rail-error-cybersyn-not-found" }) end
+        if player then
+            player.print({ "messages.rift-rail-error-cybersyn-not-found" })
+        end
         return
     end
 
@@ -59,7 +66,9 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
     local station2 = get_station(opposite_struct)
 
     if not (station1 and station1.valid and station2 and station2.valid) then
-        if player then player.print({ "messages.rift-rail-error-cybersyn-no-station" }) end
+        if player then
+            player.print({ "messages.rift-rail-error-cybersyn-no-station" })
+        end
         return
     end
 
@@ -96,7 +105,7 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
                 surface = { index = min_station.surface.index, name = min_station.surface.name, valid = true },
                 position = min_station.position,
                 operable = true,
-                backer_name = min_station.backer_name
+                backer_name = min_station.backer_name,
             }
 
             -- 准备写入 se_elevators 表的数据
@@ -118,14 +127,14 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
                 stop = s_ground,
                 surface_id = ground_portal.surface.index,
                 stop_id = s_ground.unit_number,
-                elevator_id = ground_portal.shell.unit_number
+                elevator_id = ground_portal.shell.unit_number,
             }
             local orbit_end_data = {
                 elevator = orbit_portal.shell,
                 stop = s_orbit,
                 surface_id = orbit_portal.surface.index,
                 stop_id = s_orbit.unit_number,
-                elevator_id = orbit_portal.shell.unit_number
+                elevator_id = orbit_portal.shell.unit_number,
             }
 
             local fake_elevator_data = {
@@ -134,7 +143,7 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
                 cs_enabled = true,
                 network_masks = nil,
                 [ground_portal.surface.index] = ground_end_data,
-                [orbit_portal.surface.index] = orbit_end_data
+                [orbit_portal.surface.index] = orbit_end_data,
             }
 
             -- A. 写入 SE 电梯数据库
@@ -182,7 +191,9 @@ end
 --- 处理传送门销毁
 function CybersynSE.on_portal_destroyed(portal_struct)
     -- [修改] 使用动态检查
-    if not is_cybersyn_active() then return end
+    if not is_cybersyn_active() then
+        return
+    end
 
     -- 如果已连接，则尝试断开
     if portal_struct and portal_struct.cybersyn_enabled then
@@ -205,14 +216,20 @@ end
 --- 处理克隆/移动 (支持 SE 飞船起飞降落)
 function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
     -- [修改] 使用动态检查
-    if not is_cybersyn_active() then return end
+    if not is_cybersyn_active() then
+        return
+    end
 
     -- 只有旧实体开启了连接才处理
-    if not (old_struct and new_struct and old_struct.cybersyn_enabled) then return end
+    if not (old_struct and new_struct and old_struct.cybersyn_enabled) then
+        return
+    end
 
     -- 获取配对目标
     local partner = State.get_struct_by_id(new_struct.paired_to_id)
-    if not partner then return end
+    if not partner then
+        return
+    end
 
     -- 1. 无条件注销旧连接
     CybersynSE.update_connection(old_struct, partner, false, nil)

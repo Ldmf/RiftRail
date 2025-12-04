@@ -27,12 +27,11 @@ local Util = require("scripts.util")
 local Teleport = require("scripts.teleport")
 local CybersynSE = require("scripts.cybersyn_compat") -- [新增] 加载兼容模块
 
-
 -- [修改] 给 Builder 注入 CybersynSE (用于拆除清理)
 if Builder.init then
     Builder.init({
         log_debug = log_debug,
-        CybersynSE = CybersynSE -- (Builder目前暂不直接调用，清理逻辑我们接管了)
+        CybersynSE = CybersynSE, -- (Builder目前暂不直接调用，清理逻辑我们接管了)
     })
 end
 
@@ -40,7 +39,7 @@ end
 if CybersynSE.init then
     CybersynSE.init({
         State = State,
-        log_debug = log_debug
+        log_debug = log_debug,
     })
 end
 
@@ -58,7 +57,7 @@ if Teleport.init then
         State = State,
         Util = Util,
         Schedule = Schedule,
-        log_debug = log_debug
+        log_debug = log_debug,
     })
 end
 
@@ -68,7 +67,7 @@ if Logic.init then
         State = State,
         GUI = GUI,
         log_debug = log_debug,
-        CybersynSE = CybersynSE -- [新增] 正式注入
+        CybersynSE = CybersynSE, -- [新增] 正式注入
     })
 end
 
@@ -93,7 +92,7 @@ script.on_event(build_events, Builder.on_built)
 local mine_events = {
     defines.events.on_player_mined_entity,
     defines.events.on_robot_mined_entity,
-    defines.events.script_raised_destroy
+    defines.events.script_raised_destroy,
 }
 -- [修改] 使用匿名函数拦截
 script.on_event(mine_events, function(event)
@@ -101,7 +100,9 @@ script.on_event(mine_events, function(event)
     local entity = event.entity
     if entity and entity.valid then
         local struct = State.get_struct(entity)
-        if struct then CybersynSE.on_portal_destroyed(struct) end
+        if struct then
+            CybersynSE.on_portal_destroyed(struct)
+        end
     end
 
     -- 2. 再执行原来的销毁逻辑
@@ -112,7 +113,9 @@ end)
 -- 我们需要区分是 "碰撞器被撞死(触发传送)" 还是 "建筑被打爆(触发拆除)"
 script.on_event(defines.events.on_entity_died, function(event)
     local entity = event.entity
-    if not (entity and entity.valid) then return end
+    if not (entity and entity.valid) then
+        return
+    end
 
     if entity.name == "rift-rail-collider" then
         -- 情况1: 碰撞器死亡 -> 触发传送逻辑
@@ -121,7 +124,9 @@ script.on_event(defines.events.on_entity_died, function(event)
         -- 情况2: 其他实体死亡 -> 触发拆除逻辑
         -- [新增] 先通知 Cybersyn 清理
         local struct = State.get_struct(entity)
-        if struct then CybersynSE.on_portal_destroyed(struct) end
+        if struct then
+            CybersynSE.on_portal_destroyed(struct)
+        end
         Builder.on_destroy(event)
     end
 end)
@@ -157,12 +162,16 @@ script.on_event(defines.events.on_entity_cloned, function(event)
     local new_entity = event.destination
     local old_entity = event.source
 
-    if not (new_entity and new_entity.valid) then return end
+    if not (new_entity and new_entity.valid) then
+        return
+    end
 
     -- [新增] 1.1 唤醒 Cybersyn 控制器 (与 Railjump 互斥)
     if new_entity.name == "cybersyn-combinator" then
         -- 如果安装了 Railjump (zzzzz)，我们避嫌，让他去处理
-        if script.active_mods["zzzzz"] then return end
+        if script.active_mods["zzzzz"] then
+            return
+        end
 
         -- 否则我们自己处理：只要是在飞船上，就唤醒
         if string.find(new_entity.surface.name, "spaceship") then
@@ -206,13 +215,13 @@ script.on_event(defines.events.on_entity_cloned, function(event)
         "rift-rail-internal-rail",
         "rift-rail-collider",
         "rift-rail-blocker",
-        "rift-rail-lamp"
+        "rift-rail-lamp",
     }
 
     local found_children = new_entity.surface.find_entities_filtered({
         position = new_entity.position,
         radius = 10, -- 建筑本身不大，10格半径足够覆盖所有组件
-        name = child_names
+        name = child_names,
     })
 
     for _, child in pairs(found_children) do
@@ -226,7 +235,9 @@ script.on_event(defines.events.on_entity_cloned, function(event)
     local is_landing = false
     local old_is_space = string.find(old_entity.surface.name, "spaceship")
     local new_is_space = string.find(new_entity.surface.name, "spaceship")
-    if old_is_space and (not new_is_space) then is_landing = true end
+    if old_is_space and not new_is_space then
+        is_landing = true
+    end
 
     CybersynSE.on_portal_cloned(old_data, storage.rift_rails[new_entity.unit_number], is_landing)
 
@@ -247,14 +258,20 @@ end)
 -- ============================================================================
 script.on_event(defines.events.on_player_setup_blueprint, function(event)
     -- 这个事件只在“创建蓝图(Ctrl+C)”时有 mapping，我们只处理这种情况
-    if not event.mapping then return end
+    if not event.mapping then
+        return
+    end
 
     local player = game.get_player(event.player_index)
     local blueprint = player.cursor_stack
-    if not (blueprint and blueprint.valid and blueprint.is_blueprint) then return end
+    if not (blueprint and blueprint.valid and blueprint.is_blueprint) then
+        return
+    end
 
     local entities = blueprint.get_blueprint_entities()
-    if not entities then return end
+    if not entities then
+        return
+    end
 
     local mapping = event.mapping.get()
 
@@ -277,7 +294,7 @@ script.on_event(defines.events.on_player_setup_blueprint, function(event)
                 name = "rift-rail-placer-entity",
                 position = bp_entity.position,
                 direction = bp_entity.direction,
-                tags = {} -- 初始化 tags
+                tags = {}, -- 初始化 tags
             }
 
             -- 将配置信息保存到这个新放置器的 tags 中
@@ -289,7 +306,9 @@ script.on_event(defines.events.on_player_setup_blueprint, function(event)
 
             -- 将改造后的“安装包”加入新列表
             table.insert(new_entities, placer_entity)
-            if DEBUG_MODE then player.print("[RiftRail] 蓝图源头掉包: RiftRail Entity -> Placer") end
+            if DEBUG_MODE then
+                player.print("[RiftRail] 蓝图源头掉包: RiftRail Entity -> Placer")
+            end
         elseif not (source_entity and source_entity.valid and source_entity.name:find("rift-rail-")) then
             -- 如果这个实体不是任何 RiftRail 的组件，就把它保留下来
             table.insert(new_entities, bp_entity)
@@ -312,8 +331,12 @@ script.on_event(defines.events.on_entity_settings_pasted, function(event)
     local player = game.get_player(event.player_index)
 
     -- 1. 验证：必须是从我们的建筑复制到我们的建筑
-    if not (source.valid and dest.valid) then return end
-    if source.name ~= "rift-rail-entity" or dest.name ~= "rift-rail-entity" then return end
+    if not (source.valid and dest.valid) then
+        return
+    end
+    if source.name ~= "rift-rail-entity" or dest.name ~= "rift-rail-entity" then
+        return
+    end
 
     -- 2. 获取数据
     local source_data = storage.rift_rails[source.unit_number]
@@ -401,12 +424,14 @@ remote.add_interface("RiftRail", {
 
             local target_pos = {
                 x = struct.shell.position.x + offset.x,
-                y = struct.shell.position.y + offset.y
+                y = struct.shell.position.y + offset.y,
             }
 
             -- 尝试寻找附近的无碰撞位置 (防止传送到树或石头里)
             local safe_pos = struct.shell.surface.find_non_colliding_position("character", target_pos, 5, 1)
-            if not safe_pos then safe_pos = target_pos end -- 如果找不到，强行传送
+            if not safe_pos then
+                safe_pos = target_pos
+            end -- 如果找不到，强行传送
 
             -- 执行传送
             player.teleport(safe_pos, struct.shell.surface)
@@ -422,11 +447,13 @@ remote.add_interface("RiftRail", {
             player.opened = nil
             -- <<<<< [修改结束] <<<<<
         else
-            if player then player.print({ "messages.rift-rail-error-self-invalid" }) end
+            if player then
+                player.print({ "messages.rift-rail-error-self-invalid" })
+            end
         end
     end,
 
     open_remote_view = function(player_index, portal_id)
         Logic.open_remote_view(player_index, portal_id)
-    end
+    end,
 })

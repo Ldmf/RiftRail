@@ -7,7 +7,9 @@ local State = {}
 -- 通过 自定义ID (Custom ID) 获取数据
 -- 这里的 target_id 是显示的那个短 ID (如 1, 2, 3)
 function State.get_struct_by_id(target_id)
-    if not (storage.rift_rails and target_id) then return nil end
+    if not (storage.rift_rails and target_id) then
+        return nil
+    end
 
     -- 遍历查找
     for unit_number, struct in pairs(storage.rift_rails) do
@@ -29,7 +31,9 @@ end
 
 -- 通过实体获取数据
 function State.get_struct(entity)
-    if not (entity and entity.valid) then return nil end
+    if not (entity and entity.valid) then
+        return nil
+    end
 
     -- 如果直接是主体
     if entity.name == "rift-rail-entity" then
@@ -41,11 +45,11 @@ function State.get_struct(entity)
         -- 1. 尝试位置匹配 (最快)
         local surface = entity.surface
         local pos = entity.position
-        local shells = surface.find_entities_filtered {
+        local shells = surface.find_entities_filtered({
             name = "rift-rail-entity",
             position = pos,
-            radius = 0.5 --稍微放宽一点半径防止浮点误差
-        }
+            radius = 0.5, --稍微放宽一点半径防止浮点误差
+        })
         if shells and shells[1] and shells[1].valid then
             return State.get_struct_by_unit_number(shells[1].unit_number)
         end

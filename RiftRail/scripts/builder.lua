@@ -6,7 +6,9 @@ local Builder = {}
 local log_debug = function() end
 
 function Builder.init(deps)
-    if deps.log_debug then log_debug = deps.log_debug end
+    if deps.log_debug then
+        log_debug = deps.log_debug
+    end
 end
 
 -- ============================================================================
@@ -25,7 +27,7 @@ local MASTER_LAYOUT = {
         { x = 0, y = 2 },
         { x = 0, y = 0 },
         { x = 0, y = -2 },
-        { x = 0, y = -4 }
+        { x = 0, y = -4 },
     },
 
     -- 信号灯 (入口处 Y=5)
@@ -33,7 +35,7 @@ local MASTER_LAYOUT = {
         -- 右侧 (同侧/进入): 必须反转180度，面对驶来的列车
         { x = 1.5,  y = 5, flip = true },
         -- 左侧 (异侧/离开): 保持同向，面对反向驶来的列车
-        { x = -1.5, y = 5, flip = false }
+        { x = -1.5, y = 5, flip = false },
     },
 
     -- 车站 (死胡同底部)
@@ -45,7 +47,7 @@ local MASTER_LAYOUT = {
     collider = { x = 0, y = -2 },
     core = { x = 0, y = 0 },
     -- 照明灯 (放在中心，照亮整个建筑)
-    lamp = { x = 0, y = 0 }
+    lamp = { x = 0, y = 0 },
 }
 
 -- ============================================================================
@@ -83,13 +85,21 @@ end
 function Builder.on_built(event)
     local entity = event.entity
     -- [修改] 既接受放置器(手放)，也接受主体(蓝图/机器人)
-    if not (entity and entity.valid) then return end
-    if entity.name ~= "rift-rail-placer-entity" and entity.name ~= "rift-rail-entity" then return end
+    if not (entity and entity.valid) then
+        return
+    end
+    if entity.name ~= "rift-rail-placer-entity" and entity.name ~= "rift-rail-entity" then
+        return
+    end
 
-    if not storage.rift_rails then storage.rift_rails = {} end
+    if not storage.rift_rails then
+        storage.rift_rails = {}
+    end
 
     -- 生成新 ID (无论手放还是蓝图，都视为新建筑)
-    if not storage.next_rift_id then storage.next_rift_id = 1 end
+    if not storage.next_rift_id then
+        storage.next_rift_id = 1
+    end
     local custom_id = storage.next_rift_id
     storage.next_rift_id = storage.next_rift_id + 1
 
@@ -113,19 +123,19 @@ function Builder.on_built(event)
         local raw_position = entity.position
         position = {
             x = math.floor(raw_position.x / 2) * 2 + 1,
-            y = math.floor(raw_position.y / 2) * 2 + 1
+            y = math.floor(raw_position.y / 2) * 2 + 1,
         }
 
         log_debug("构建(手放)... 方向: " .. direction)
         entity.destroy() -- 销毁手中的放置器实体
 
         -- 创建全新的主体
-        shell = surface.create_entity {
+        shell = surface.create_entity({
             name = "rift-rail-entity",
             position = position,
             direction = direction,
-            force = force
-        }
+            force = force,
+        })
     else
         -- >>> 情况 B: 蓝图/机器人建造 >>>
         -- 实体本身就是主体 (Shell)，直接使用
@@ -135,7 +145,9 @@ function Builder.on_built(event)
         -- 不需要销毁 entity，也不需要 create shell
     end
 
-    if not shell then return end
+    if not shell then
+        return
+    end
     -- shell.destructible = false
     -- 让 shell 保持默认的可破坏状态，这样虫子能咬它，你也能修它。
 
@@ -145,12 +157,12 @@ function Builder.on_built(event)
     local rail_dir = get_rail_dir(direction)
     for _, p in pairs(MASTER_LAYOUT.rails) do
         local offset = rotate_point(p, direction)
-        local rail = surface.create_entity {
+        local rail = surface.create_entity({
             name = "rift-rail-internal-rail",
             position = { x = position.x + offset.x, y = position.y + offset.y },
             direction = rail_dir,
-            force = force
-        }
+            force = force,
+        })
         table.insert(children, rail)
     end
 
@@ -158,24 +170,26 @@ function Builder.on_built(event)
     for _, s in pairs(MASTER_LAYOUT.signals) do
         local offset = rotate_point(s, direction)
         local sig_dir = direction
-        if s.flip then sig_dir = (direction + 8) % 16 end
-        local signal = surface.create_entity {
+        if s.flip then
+            sig_dir = (direction + 8) % 16
+        end
+        local signal = surface.create_entity({
             name = "rift-rail-signal",
             position = { x = position.x + offset.x, y = position.y + offset.y },
             direction = sig_dir,
-            force = force
-        }
+            force = force,
+        })
         table.insert(children, signal)
     end
 
     -- 4. 创建车站 (修改：应用恢复的名字)
     local st_offset = rotate_point(MASTER_LAYOUT.station, direction)
-    local station = surface.create_entity {
+    local station = surface.create_entity({
         name = "rift-rail-station",
         position = { x = position.x + st_offset.x, y = position.y + st_offset.y },
         direction = direction,
-        force = force
-    }
+        force = force,
+    })
 
     -- 拼接车站显示名称 (逻辑参考 Logic.lua)
     local master_icon = "[item=rift-rail-placer] "
@@ -189,42 +203,42 @@ function Builder.on_built(event)
 
     -- 5. 创建 GUI 核心 (逻辑不变)
     local core_offset = rotate_point(MASTER_LAYOUT.core, direction)
-    local core = surface.create_entity {
+    local core = surface.create_entity({
         name = "rift-rail-core",
         position = { x = position.x + core_offset.x, y = position.y + core_offset.y },
         direction = direction,
-        force = force
-    }
+        force = force,
+    })
     table.insert(children, core)
 
     -- 6. 创建触发器 (修改：根据恢复的模式决定是否生成)
     -- 如果是入口(entry) 或 默认(neutral)，则生成碰撞器；出口(exit)则不生成
     if recovered_mode == "entry" or recovered_mode == "neutral" then
         local col_offset = rotate_point(MASTER_LAYOUT.collider, direction)
-        local collider = surface.create_entity {
+        local collider = surface.create_entity({
             name = "rift-rail-collider",
             position = { x = position.x + col_offset.x, y = position.y + col_offset.y },
-            force = force
-        }
+            force = force,
+        })
         table.insert(children, collider)
     end
 
     -- 7. 创建物理堵头 (逻辑不变)
     local blk_offset = rotate_point(MASTER_LAYOUT.blocker, direction)
-    local blocker = surface.create_entity {
+    local blocker = surface.create_entity({
         name = "rift-rail-blocker",
         position = { x = position.x + blk_offset.x, y = position.y + blk_offset.y },
-        force = force
-    }
+        force = force,
+    })
     table.insert(children, blocker)
 
     -- 8. 创建照明灯 (逻辑不变)
     local lamp_offset = rotate_point(MASTER_LAYOUT.lamp, direction)
-    local lamp = surface.create_entity {
+    local lamp = surface.create_entity({
         name = "rift-rail-lamp",
         position = { x = position.x + lamp_offset.x, y = position.y + lamp_offset.y },
-        force = force
-    }
+        force = force,
+    })
     table.insert(children, lamp)
 
     -- 批量设置内部组件属性
@@ -241,7 +255,6 @@ function Builder.on_built(event)
         end
     end
 
-
     -- [修改] 存储数据 (应用恢复的属性)
     storage.rift_rails[shell.unit_number] = {
         id = custom_id,
@@ -255,25 +268,27 @@ function Builder.on_built(event)
         cybersyn_enabled = false,
         shell = shell,
         children = children,
-        paired_to_id = nil -- 新建/复制的建筑默认不配对
+        paired_to_id = nil, -- 新建/复制的建筑默认不配对
     }
 end
 
 -- [新增] 强制清理区域内的火车 (防止拆除铁轨后留下幽灵车厢)
 local function clear_trains_inside(shell_entity)
-    if not (shell_entity and shell_entity.valid) then return end
+    if not (shell_entity and shell_entity.valid) then
+        return
+    end
 
     -- 定义搜索范围 (以建筑中心为原点，稍微大一点点以覆盖边缘)
     local search_area = {
         left_top = { x = shell_entity.position.x - 2.5, y = shell_entity.position.y - 6.5 },
-        right_bottom = { x = shell_entity.position.x + 2.5, y = shell_entity.position.y + 6.5 }
+        right_bottom = { x = shell_entity.position.x + 2.5, y = shell_entity.position.y + 6.5 },
     }
 
     -- 查找所有类型的车辆
-    local trains = shell_entity.surface.find_entities_filtered {
+    local trains = shell_entity.surface.find_entities_filtered({
         area = search_area,
-        type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" }
-    }
+        type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" },
+    })
 
     -- 强制销毁
     for _, carriage in pairs(trains) do
@@ -283,16 +298,19 @@ local function clear_trains_inside(shell_entity)
     end
 end
 
-
 -- ============================================================================
 -- 拆除函数 (兼容性修复版)
 -- ============================================================================
 function Builder.on_destroy(event)
     local entity = event.entity
-    if not (entity and entity.valid) then return end
+    if not (entity and entity.valid) then
+        return
+    end
 
     -- 过滤非本模组实体
-    if not string.find(entity.name, "rift%-rail") then return end
+    if not string.find(entity.name, "rift%-rail") then
+        return
+    end
     -- 特例：碰撞器死亡是传送触发信号，绝对不能触发拆除逻辑！
     if entity.name == "rift-rail-collider" then
         return
@@ -333,7 +351,9 @@ function Builder.on_destroy(event)
                     end
                 end
 
-                if target_id then break end
+                if target_id then
+                    break
+                end
             end
         end
     end
@@ -368,16 +388,17 @@ function Builder.on_destroy(event)
                     partner.tug = nil
                 end
 
-
                 -- 4. 物理清理: 删掉它的碰撞器
                 if partner.shell and partner.shell.valid then
-                    local colliders = partner.shell.surface.find_entities_filtered {
+                    local colliders = partner.shell.surface.find_entities_filtered({
                         name = "rift-rail-collider",
                         position = partner.shell.position,
-                        radius = 5
-                    }
+                        radius = 5,
+                    })
                     for _, c in pairs(colliders) do
-                        if c.valid then c.destroy() end
+                        if c.valid then
+                            c.destroy()
+                        end
                     end
                 end
 
@@ -385,7 +406,6 @@ function Builder.on_destroy(event)
                 -- 玩家下次打开或者 GUI 自动刷新时就会显示 "未连接"，而不是报错)
             end
         end
-
 
         -- [兼容性修复] 确定子实体列表和主体
         -- 如果 data.children 存在，说明是新结构；否则假设 data 本身就是列表（旧结构）
@@ -399,10 +419,12 @@ function Builder.on_destroy(event)
             -- [保底] 如果找不到主体引用，手动指定范围清理火车
             local train_search_area = {
                 left_top = { x = center_pos.x - 6, y = center_pos.y - 6 },
-                right_bottom = { x = center_pos.x + 6, y = center_pos.y + 6 }
+                right_bottom = { x = center_pos.x + 6, y = center_pos.y + 6 },
             }
-            local trains = surface.find_entities_filtered { area = train_search_area, type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" } }
-            for _, t in pairs(trains) do t.destroy() end
+            local trains = surface.find_entities_filtered({ area = train_search_area, type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" } })
+            for _, t in pairs(trains) do
+                t.destroy()
+            end
         end
 
         -- B. 销毁所有子实体
@@ -423,8 +445,10 @@ function Builder.on_destroy(event)
 
         -- D. 无论如何，尝试销毁该位置可能残留的主体 (针对旧数据)
         if not shell_entity and entity.name ~= "rift-rail-entity" then
-            local potential_shells = surface.find_entities_filtered { name = "rift-rail-entity", position = center_pos }
-            for _, s in pairs(potential_shells) do s.destroy() end
+            local potential_shells = surface.find_entities_filtered({ name = "rift-rail-entity", position = center_pos })
+            for _, s in pairs(potential_shells) do
+                s.destroy()
+            end
         end
 
         storage.rift_rails[target_id] = nil
@@ -437,20 +461,26 @@ function Builder.on_destroy(event)
     -- 清火车
     local sweep_area = {
         left_top = { x = center_pos.x - 6, y = center_pos.y - 6 },
-        right_bottom = { x = center_pos.x + 6, y = center_pos.y + 6 }
+        right_bottom = { x = center_pos.x + 6, y = center_pos.y + 6 },
     }
-    local trains = surface.find_entities_filtered { area = sweep_area, type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" } }
-    for _, t in pairs(trains) do t.destroy() end
+    local trains = surface.find_entities_filtered({ area = sweep_area, type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" } })
+    for _, t in pairs(trains) do
+        t.destroy()
+    end
 
     -- 清零件
-    local junk = surface.find_entities_filtered {
+    local junk = surface.find_entities_filtered({
         area = sweep_area,
         name = {
-            "rift-rail-entity", "rift-rail-core", "rift-rail-station",
-            "rift-rail-signal", "rift-rail-internal-rail",
-            "rift-rail-collider", "rift-rail-blocker"
-        }
-    }
+            "rift-rail-entity",
+            "rift-rail-core",
+            "rift-rail-station",
+            "rift-rail-signal",
+            "rift-rail-internal-rail",
+            "rift-rail-collider",
+            "rift-rail-blocker",
+        },
+    })
 
     local junk_count = 0
     for _, item in pairs(junk) do

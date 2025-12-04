@@ -13,7 +13,7 @@ local sprite_left = {
     shift = { 0, 0 },
     scale = 0.35,
     x = 0, -- 左侧贴图位于图集的 x=0 坐标
-    y = 0
+    y = 0,
 }
 
 -- 入口在右 (Right)
@@ -27,7 +27,7 @@ local sprite_right = {
     shift = { 0, 0 },
     scale = 0.35,
     x = 1344, -- 右侧贴图位于图集的 x=1344 坐标
-    y = 0
+    y = 0,
 }
 
 -- 入口在下 (Down)
@@ -41,7 +41,7 @@ local sprite_down = {
     shift = { 0, 0 },
     scale = 0.35,
     x = 0,
-    y = 0 -- 下侧贴图位于图集的 y=0 坐标
+    y = 0, -- 下侧贴图位于图集的 y=0 坐标
 }
 
 -- 入口在上 (Up)
@@ -55,7 +55,7 @@ local sprite_up = {
     shift = { 0, 0 },
     scale = 0.35,
     x = 0,
-    y = 1344 -- 上侧贴图位于图集的 y=1344 坐标
+    y = 1344, -- 上侧贴图位于图集的 y=1344 坐标
 }
 
 local function create_centered_box(width, height)
@@ -102,7 +102,7 @@ data:extend({
         enabled = true,
         energy_required = 0.1,
         ingredients = {
-            { type = "item", name = "iron-plate", amount = 1 }
+            { type = "item", name = "iron-plate", amount = 1 },
         },
         results = { { type = "item", name = "rift-rail-placer", amount = 1 } },
     },
@@ -129,7 +129,7 @@ data:extend({
             north = sprite_down,
             south = sprite_up,
             east = sprite_left,
-            west = sprite_right
+            west = sprite_right,
         },
         render_layer = "object",
     },
@@ -161,7 +161,7 @@ data:extend({
                 -- ["object"] = true, -- 移除！这样铁轨规划器就不会认为它是个障碍物
                 ["player"] = true,
                 -- ["train"] = true, -- 允许火车通行
-            }
+            },
         },
         -- [修正] 竖向尺寸 4x12
         -- 因为不再挡铁轨了，所以我们可以把它做得和贴图一样大，不用留缝隙
@@ -176,7 +176,7 @@ data:extend({
             north = sprite_down,
             south = sprite_up,
             east = sprite_left,
-            west = sprite_right
+            west = sprite_right,
         },
         render_layer = "train-stop-top",
     },
@@ -204,15 +204,14 @@ data:extend({
         picture_on = blank_sprite,
 
         -- 光照参数 (你可以调整 size 和 intensity)
-        light = { intensity = 0.9, size = 40, color = { r = 0.9, g = 0.9, b = 1.0 } }
+        light = { intensity = 0.9, size = 40, color = { r = 0.9, g = 0.9, b = 1.0 } },
     },
-
 
     -- 3. 内部组件占位符
     { type = "train-stop",           name = "rift-rail-station" },
     { type = "rail-signal",          name = "rift-rail-signal" },
     { type = "legacy-straight-rail", name = "rift-rail-internal-rail" },
-    { type = "container",            name = "rift-rail-core" },    -- [修改] 改为容器(箱子)，以便利用原生的 GUI 锚定机制
+    { type = "container",            name = "rift-rail-core" }, -- [修改] 改为容器(箱子)，以便利用原生的 GUI 锚定机制
     { type = "simple-entity",        name = "rift-rail-collider" },
     { type = "simple-entity",        name = "rift-rail-blocker" }, -- 物理堵头
 
@@ -267,7 +266,9 @@ data:extend({
 
 -- 后期处理
 local function table_merge(destination, source)
-    for k, v in pairs(source) do destination[k] = v end
+    for k, v in pairs(source) do
+        destination[k] = v
+    end
     return destination
 end
 
@@ -300,8 +301,8 @@ internal_signal.selectable_in_game = false
 
 -- [修正] 铁轨名称兼容性修复
 local internal_rail = data.raw["legacy-straight-rail"]["rift-rail-internal-rail"]
-local source_rail = data.raw["legacy-straight-rail"]["legacy-straight-rail"]
-    or data.raw["legacy-straight-rail"]["straight-rail"]
+local source_rail = data.raw["legacy-straight-rail"]["legacy-straight-rail"] or
+data.raw["legacy-straight-rail"]["straight-rail"]
 table_merge(internal_rail, table.deepcopy(source_rail))
 internal_rail.name = "rift-rail-internal-rail"
 internal_rail.minable = nil
@@ -350,7 +351,7 @@ trigger.collision_mask = { layers = { ["train"] = true } }
 trigger.dying_trigger_effect = {
     type = "create-entity",
     entity_name = "rift-rail-train-collision-explosion",
-    trigger_created_entity = true
+    trigger_created_entity = true,
 }
 
 -- F. 配置物理堵头 (Blocker)
@@ -374,5 +375,5 @@ blocker.collision_mask = {
         ["object"] = true, -- 移除！这样铁轨规划器就不会认为它是个障碍物
         ["player"] = true,
         -- ["train"] = true, -- 允许火车通行
-    }
+    },
 }

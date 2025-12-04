@@ -41,7 +41,7 @@ function GUI.build_display_name_flow(parent_flow, my_data)
         name = "rift_rail_rename_button",
         sprite = "utility/rename_icon",
         tooltip = { "gui.rift-rail-rename-tooltip" },
-        style = "tool_button"
+        style = "tool_button",
     })
 end
 
@@ -60,7 +60,7 @@ function GUI.build_edit_name_flow(parent_flow, my_data)
         name = "rift_rail_rename_textfield",
         text = current_icon_str .. my_data.name,
         icon_selector = true,
-        handler = "on_gui_confirmed"
+        handler = "on_gui_confirmed",
     })
     textfield.style.width = 200
     textfield.focus()
@@ -70,7 +70,7 @@ function GUI.build_edit_name_flow(parent_flow, my_data)
         type = "sprite-button",
         name = "rift_rail_confirm_rename_button",
         sprite = "utility/check_mark",
-        style = "tool_button_green"
+        style = "tool_button_green",
     })
 end
 
@@ -79,7 +79,9 @@ end
 -- =================================================================================
 
 function GUI.build_or_update(player, entity)
-    if not (player and entity and entity.valid) then return end
+    if not (player and entity and entity.valid) then
+        return
+    end
 
     -- 1. 获取数据
     local my_data = State.get_struct(entity)
@@ -89,7 +91,9 @@ function GUI.build_or_update(player, entity)
     end
 
     -- 2. 初始化玩家设置
-    if not storage.rift_rail_player_settings then storage.rift_rail_player_settings = {} end
+    if not storage.rift_rail_player_settings then
+        storage.rift_rail_player_settings = {}
+    end
     if not storage.rift_rail_player_settings[player.index] then
         storage.rift_rail_player_settings[player.index] = { show_preview = true }
     end
@@ -103,8 +107,6 @@ function GUI.build_or_update(player, entity)
     if gui.rift_rail_main_frame then
         gui.rift_rail_main_frame.destroy()
     end
-
-
 
     -- 动态标题栏 (逻辑修正：如果没有自定义图标，强制显示默认图标)
 
@@ -125,17 +127,18 @@ function GUI.build_or_update(player, entity)
         title_icon,                       -- 图标字符串 "[item=...]"
         " ",                              -- 空格
         { "entity-name.rift-rail-core" }, -- 读取 locale 中的中文名
-        " (ID: " .. my_data.id .. ")"     -- 后面拼接 ID
+        " (ID: " .. my_data.id .. ")",    -- 后面拼接 ID
     }
 
-    if log_debug then log_debug("GUI: 标题已更新为本地化名称 (ID: " .. my_data.id .. ")") end
-
+    if log_debug then
+        log_debug("GUI: 标题已更新为本地化名称 (ID: " .. my_data.id .. ")")
+    end
 
     local frame = gui.add({
         type = "frame",
         name = "rift_rail_main_frame",
         direction = "vertical",
-        caption = title_caption -- 使用带图标的标题
+        caption = title_caption, -- 使用带图标的标题
     })
 
     -- 6. 让窗口自动居中
@@ -148,7 +151,9 @@ function GUI.build_or_update(player, entity)
     -- 这会自动关闭原本的箱子界面！
     player.opened = frame
 
-    if log_debug then log_debug("GUI: 已创建独立窗口并接管 player.opened") end
+    if log_debug then
+        log_debug("GUI: 已创建独立窗口并接管 player.opened")
+    end
 
     local inner_flow = frame.add({ type = "flow", direction = "vertical" })
     inner_flow.style.padding = 8
@@ -161,8 +166,12 @@ function GUI.build_or_update(player, entity)
 
     -- 5. 模式切换 (三态开关)
     local switch_state = "none"
-    if my_data.mode == "entry" then switch_state = "left" end
-    if my_data.mode == "exit" then switch_state = "right" end
+    if my_data.mode == "entry" then
+        switch_state = "left"
+    end
+    if my_data.mode == "exit" then
+        switch_state = "right"
+    end
 
     inner_flow.add({ type = "label", caption = { "gui.rift-rail-mode-label" } })
     local mode_switch = inner_flow.add({
@@ -173,8 +182,7 @@ function GUI.build_or_update(player, entity)
         left_label_caption = { "gui.rift-rail-mode-entry" },
         right_label_caption = { "gui.rift-rail-mode-exit" },
         tooltip = (switch_state == "left" and { "gui.rift-rail-mode-tooltip-left" }) or
-            (switch_state == "right" and { "gui.rift-rail-mode-tooltip-right" }) or
-            { "gui.rift-rail-mode-tooltip-none" }
+        (switch_state == "right" and { "gui.rift-rail-mode-tooltip-right" }) or { "gui.rift-rail-mode-tooltip-none" },
     })
     mode_switch.style.bottom_margin = 12
 
@@ -189,13 +197,13 @@ function GUI.build_or_update(player, entity)
             status_flow.add({
                 type = "label",
                 caption = { "gui.rift-rail-status-paired", partner.name, partner.id, partner.surface.name },
-                style = "bold_label"
+                style = "bold_label",
             })
         else
             status_flow.add({
                 type = "label",
                 caption = { "gui.rift-rail-status-error-partner-missing" },
-                style = "bold_red_label"
+                style = "bold_red_label",
             })
         end
     else
@@ -224,9 +232,15 @@ function GUI.build_or_update(player, entity)
             end
 
             local mode_key = "gui.rift-rail-mode-short-unknown"
-            if p_data.mode == "entry" then mode_key = "gui.rift-rail-mode-short-entry" end
-            if p_data.mode == "exit" then mode_key = "gui.rift-rail-mode-short-exit" end
-            if p_data.mode == "neutral" then mode_key = "gui.rift-rail-mode-short-neutral" end
+            if p_data.mode == "entry" then
+                mode_key = "gui.rift-rail-mode-short-entry"
+            end
+            if p_data.mode == "exit" then
+                mode_key = "gui.rift-rail-mode-short-exit"
+            end
+            if p_data.mode == "neutral" then
+                mode_key = "gui.rift-rail-mode-short-neutral"
+            end
 
             -- 构建本地化字符串结构 {"", A, B, C...} 用于拼接
             -- 格式: 图标 + 名字 + (ID:xx) + [模式] + [地表]
@@ -236,13 +250,12 @@ function GUI.build_or_update(player, entity)
                 p_data.name,
                 " (ID:" .. p_data.id .. ") ",
                 { mode_key }, -- 插入本地化键
-                " [" .. p_data.surface.name .. "]"
+                " [" .. p_data.surface.name .. "]",
             }
 
             table.insert(dropdown_items, item_text)
             -- 同步记录 ID
             table.insert(dropdown_ids, p_data.id)
-
 
             -- 如果这个就是当前配对的对象，记录索引
             if my_data.paired_to_id == p_data.id then
@@ -254,7 +267,6 @@ function GUI.build_or_update(player, entity)
 
     -- 将 ID 列表存入控件的 tags 属性
     dropdown.tags = { ids = dropdown_ids }
-
 
     -- 设置选中项
     if selected_idx > 0 then
@@ -271,15 +283,17 @@ function GUI.build_or_update(player, entity)
             type = "button",
             name = "rift_rail_unpair_button",
             caption = { "gui.rift-rail-btn-unpair" },
-            style = "red_button"
+            style = "red_button",
         })
     else
         local pair_btn = btn_flow.add({
             type = "button",
             name = "rift_rail_pair_button",
-            caption = { "gui.rift-rail-btn-pair" }
+            caption = { "gui.rift-rail-btn-pair" },
         })
-        if #dropdown_items == 0 then pair_btn.enabled = false end
+        if #dropdown_items == 0 then
+            pair_btn.enabled = false
+        end
     end
 
     -- 8. Cybersyn 开关 (仅当安装了 Cybersyn 模组时显示)
@@ -297,7 +311,7 @@ function GUI.build_or_update(player, entity)
             right_label_caption = { "gui.rift-rail-cybersyn-connected" },
             left_label_caption = { "gui.rift-rail-cybersyn-disconnected" },
             tooltip = { "gui.rift-rail-cybersyn-tooltip" },
-            enabled = (my_data.paired_to_id ~= nil)
+            enabled = (my_data.paired_to_id ~= nil),
         })
     end
     -- [新增] if 判断结束
@@ -311,7 +325,7 @@ function GUI.build_or_update(player, entity)
             type = "checkbox",
             name = "rift_rail_preview_check",
             state = player_settings.show_preview,
-            caption = { "gui.rift-rail-preview-checkbox" }
+            caption = { "gui.rift-rail-preview-checkbox" },
         })
     end
 
@@ -332,7 +346,7 @@ function GUI.build_or_update(player, entity)
         tool_flow.add({
             type = "button",
             name = "rift_rail_remote_view_button",
-            caption = { "gui.rift-rail-btn-view" }
+            caption = { "gui.rift-rail-btn-view" },
         })
     end
 
@@ -346,9 +360,9 @@ function GUI.build_or_update(player, entity)
                 style = "frame_title",
                 -- 本地化预览标题 >>>>>
                 -- 对应 locale: rift-rail-preview-title=远程预览: __1__ [__2__]
-                caption = { "gui.rift-rail-preview-title", partner.name, partner.shell.surface.name }
-
-            }).style.left_padding = 8
+                caption = { "gui.rift-rail-preview-title", partner.name, partner.shell.surface.name },
+            }).style.left_padding =
+                8
 
             -- 预览框 (inside_shallow_frame) + 拉伸属性
             local preview_frame = inner_flow.add({ type = "frame", style = "inside_shallow_frame" })
@@ -364,7 +378,7 @@ function GUI.build_or_update(player, entity)
                 type = "camera",
                 position = partner.shell.position,
                 surface_index = partner.shell.surface.index,
-                zoom = 0.2
+                zoom = 0.2,
             })
             -- 摄像头也要开启拉伸
             cam.style.horizontally_stretchable = true
@@ -378,19 +392,23 @@ end
 -- =================================================================================
 
 function GUI.handle_click(event)
-    if not (event.element and event.element.valid) then return end
+    if not (event.element and event.element.valid) then
+        return
+    end
     local player = game.get_player(event.player_index)
     local el_name = event.element.name
 
-
-
     local frame = player.gui.screen.rift_rail_main_frame
-    if not (frame and frame.valid) then return end
+    if not (frame and frame.valid) then
+        return
+    end
 
     local unit_number = frame.tags.unit_number
     -- [修正] 使用 unit_number 直接查找，而不是查自定义 ID
     local my_data = State.get_struct_by_unit_number(unit_number)
-    if not my_data then return end
+    if not my_data then
+        return
+    end
 
     log_debug("GUI 点击: " .. el_name .. " (ID: " .. unit_number .. ")")
 
@@ -402,10 +420,14 @@ function GUI.handle_click(event)
         local dropdown = nil
         -- 简单遍历查找 dropdown 元素
         local function find_dropdown(element)
-            if element.type == "drop-down" and element.name == "rift_rail_target_dropdown" then return element end
+            if element.type == "drop-down" and element.name == "rift_rail_target_dropdown" then
+                return element
+            end
             for _, child in pairs(element.children) do
                 local found = find_dropdown(child)
-                if found then return found end
+                if found then
+                    return found
+                end
             end
         end
         dropdown = find_dropdown(frame)
@@ -430,21 +452,31 @@ function GUI.handle_click(event)
     elseif el_name == "rift_rail_rename_button" then
         -- 查找 name_flow
         local function find_name_flow(element)
-            if element.name == "name_flow" then return element end
+            if element.name == "name_flow" then
+                return element
+            end
             for _, child in pairs(element.children) do
                 local found = find_name_flow(child)
-                if found then return found end
+                if found then
+                    return found
+                end
             end
         end
         local name_flow = find_name_flow(frame)
-        if name_flow then GUI.build_edit_name_flow(name_flow, my_data) end
+        if name_flow then
+            GUI.build_edit_name_flow(name_flow, my_data)
+        end
     elseif el_name == "rift_rail_confirm_rename_button" then
         -- 查找 textfield (通过 name_flow 找)
         local function find_textfield(element)
-            if element.name == "rift_rail_rename_textfield" then return element end
+            if element.name == "rift_rail_rename_textfield" then
+                return element
+            end
             for _, child in pairs(element.children) do
                 local found = find_textfield(child)
-                if found then return found end
+                if found then
+                    return found
+                end
             end
         end
         local textfield = find_textfield(frame)
@@ -463,21 +495,31 @@ function GUI.handle_click(event)
 end
 
 function GUI.handle_switch_state_changed(event)
-    if not (event.element and event.element.valid) then return end
+    if not (event.element and event.element.valid) then
+        return
+    end
     local player = game.get_player(event.player_index)
     local el_name = event.element.name
 
     local frame = player.gui.screen.rift_rail_main_frame
-    if not (frame and frame.valid) then return end
+    if not (frame and frame.valid) then
+        return
+    end
     -- [修正]
     local my_data = State.get_struct_by_unit_number(frame.tags.unit_number)
-    if not my_data then return end
+    if not my_data then
+        return
+    end
 
     if el_name == "rift_rail_mode_switch" then
         local state = event.element.switch_state
         local mode = "neutral"
-        if state == "left" then mode = "entry" end
-        if state == "right" then mode = "exit" end
+        if state == "left" then
+            mode = "entry"
+        end
+        if state == "right" then
+            mode = "exit"
+        end
         remote.call("RiftRail", "set_portal_mode", player.index, my_data.id, mode)
     elseif el_name == "rift_rail_cybersyn_switch" then
         local enabled = (event.element.switch_state == "right")
@@ -501,16 +543,20 @@ function GUI.handle_checked_state_changed(event)
 end
 
 function GUI.handle_confirmed(event)
-    if not (event.element and event.element.valid) then return end
+    if not (event.element and event.element.valid) then
+        return
+    end
     if event.element.name == "rift_rail_rename_textfield" then
         local player = game.get_player(event.player_index)
         local frame = player.gui.screen.rift_rail_main_frame
-        if not frame then return end
+        if not frame then
+            return
+        end
 
         -- 模拟点击确认
         local fake_event = {
             element = { name = "rift_rail_confirm_rename_button" }, -- 简化处理，直接传名字匹配
-            player_index = event.player_index
+            player_index = event.player_index,
         }
         GUI.handle_click(fake_event)
     end
@@ -522,7 +568,9 @@ function GUI.handle_close(event)
     local element = event.element
 
     if element and element.valid and element.name == "rift_rail_main_frame" then
-        if log_debug then log_debug("GUI: 检测到关闭事件，销毁窗口。") end
+        if log_debug then
+            log_debug("GUI: 检测到关闭事件，销毁窗口。")
+        end
         element.destroy()
     end
 end

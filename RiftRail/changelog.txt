@@ -2,7 +2,7 @@
 Version: 0.1.1
 Date: 2025-12-05
   Features:
-    - [核心功能] 新增 Cybersyn 模组深度兼容：
+    - [核心功能] 新增 Cybersyn 模组深度兼容(需安装se模组)：
     - 传送门现在可以伪装成 SE 太空电梯，无缝接入 Cybersyn 物流网络。
     - 支持在 Space Exploration 飞船中使用：自动处理飞船起飞、降落时的物流连接状态（降落静默，起飞重连）。
     - 自动唤醒飞船上克隆后失效的 Cybersyn 组合算分器。

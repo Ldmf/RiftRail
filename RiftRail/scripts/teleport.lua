@@ -27,26 +27,26 @@ local GEOMETRY = {
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.south,
         tug_offset = { x = 0, y = -4.0 }, -- [修改] 拉近距离，从 -4.5 改为 -4.0
-        velocity_mult = { x = 0, y = 1 }
+        velocity_mult = { x = 0, y = 1 },
     },
     [4] = { -- East
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.west,
         tug_offset = { x = 4.0, y = 0 }, -- [修改] 4.5 -> 4.0
-        velocity_mult = { x = -1, y = 0 }
+        velocity_mult = { x = -1, y = 0 },
     },
     [8] = { -- South
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.north,
         tug_offset = { x = 0, y = 4.0 }, -- [修改] 4.5 -> 4.0
-        velocity_mult = { x = 0, y = -1 }
+        velocity_mult = { x = 0, y = -1 },
     },
     [12] = { -- West
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.east,
         tug_offset = { x = -4.0, y = 0 }, -- [修改] -4.5 -> -4.0
-        velocity_mult = { x = 1, y = 0 }
-    }
+        velocity_mult = { x = 1, y = 0 },
+    },
 }
 
 -- [新增] 辅助函数：从子实体中获取真实的车站名称 (带图标)
@@ -64,17 +64,13 @@ local function get_real_station_name(struct)
     return struct.name
 end
 
--- [新增] 本地日志辅助 (如果文件中已有可忽略)
-local function log_tp(msg)
-    -- 假设 log_debug 已经在 init 中注入
-    if log_debug then log_debug("[Teleport] " .. msg) end
-end
-
 -- [新增] 辅助函数：判断车厢在列车中的连接方向 (照搬 SE)
 -- 返回 1 (正接) 或 -1 (反接)
 local function get_train_forward_sign(carriage_a)
     local sign = 1
-    if #carriage_a.train.carriages == 1 then return sign end
+    if #carriage_a.train.carriages == 1 then
+        return sign
+    end
 
     -- 检查前连接点
     local carriage_b = carriage_a.get_connected_rolling_stock(defines.rail_direction.front)
@@ -86,8 +82,12 @@ local function get_train_forward_sign(carriage_a)
 
     -- 遍历列车确定相对顺序
     for _, carriage in pairs(carriage_a.train.carriages) do
-        if carriage == carriage_b then return sign end
-        if carriage == carriage_a then return -sign end
+        if carriage == carriage_b then
+            return sign
+        end
+        if carriage == carriage_a then
+            return -sign
+        end
     end
     return sign
 end
@@ -96,7 +96,9 @@ function Teleport.init(deps)
     State = deps.State
     Util = deps.Util
     Schedule = deps.Schedule
-    if deps.log_debug then log_debug = deps.log_debug end
+    if deps.log_debug then
+        log_debug = deps.log_debug
+    end
 
     -- 尝试获取 SE 事件 (动态检测)
     if script.active_mods["space-exploration"] and remote.interfaces["space-exploration"] then
@@ -115,7 +117,6 @@ local function log_tp(msg)
     log_debug("[Teleport] " .. msg)
 end
 
-
 -- =================================================================================
 -- 核心传送逻辑
 -- =================================================================================
@@ -130,7 +131,7 @@ local function finish_teleport(entry_struct, exit_struct)
         local saved_index_before_tug_death = nil
         -- 尝试通过 carriage_ahead 获取火车
         local train_ref = exit_struct.carriage_ahead and exit_struct.carriage_ahead.valid and
-            exit_struct.carriage_ahead.train
+        exit_struct.carriage_ahead.train
         if train_ref and train_ref.valid and train_ref.schedule then
             saved_index_before_tug_death = train_ref.schedule.current
         end
@@ -166,18 +167,18 @@ local function finish_teleport(entry_struct, exit_struct)
         local out_orientation = geo_exit.direction / 16.0
 
         -- 2. 初始化队列
-        if not storage.speed_queue then storage.speed_queue = {} end
+        if not storage.speed_queue then
+            storage.speed_queue = {}
+        end
 
         -- 3. 入队
         table.insert(storage.speed_queue, {
             train = final_train,
-            velocity = target_speed,  -- 速度绝对值
-            out_ori = out_orientation -- 目标物理朝向
+            velocity = target_speed,   -- 速度绝对值
+            out_ori = out_orientation, -- 目标物理朝向
         })
 
         -- <<<<< [修改结束] <<<<<
-
-
 
         -- 4. SE 事件触发 (Finished)
         if SE_TELEPORT_FINISHED_EVENT_ID and exit_struct.old_train_id then
@@ -186,7 +187,7 @@ local function finish_teleport(entry_struct, exit_struct)
                 train = final_train,
                 old_train_id_1 = exit_struct.old_train_id,
                 old_surface_index = entry_struct.surface.index,
-                teleporter = entry_struct.shell
+                teleporter = entry_struct.shell,
             })
         end
     end
@@ -208,11 +209,11 @@ local function finish_teleport(entry_struct, exit_struct)
             -- 由于 collider 是 data.children 的一部分，为了严谨，我们应该复用位置
             -- 暂时先不自动重建，依赖 control.lua 的 on_tick 检查或 Builder 的逻辑
             -- **修正**：按照传送门逻辑，这里必须重建，否则下一辆车无法触发
-            local collider = entry_struct.surface.create_entity {
+            local collider = entry_struct.surface.create_entity({
                 name = "rift-rail-collider",
                 position = { x = entry_struct.shell.position.x, y = entry_struct.shell.position.y - 2 }, -- 默认位置，需修正
-                force = entry_struct.shell.force
-            }
+                force = entry_struct.shell.force,
+            })
             -- 注意：实际位置需要根据旋转计算。为防出错，建议在 Teleport.tick 里做延迟检查重建
             -- 或者在这里简单调用一个 Builder 的修复函数（如果有）
             -- 鉴于要求“照搬逻辑”，传送门是在 on_tick 里重建的。我们在 on_tick 处理。
@@ -247,18 +248,20 @@ function Teleport.teleport_next(entry_struct)
     -- 定义检查区域 (简单一个小矩形)
     local check_area = {
         left_top = { x = spawn_pos.x - 2, y = spawn_pos.y - 2 },
-        right_bottom = { x = spawn_pos.x + 2, y = spawn_pos.y + 2 }
+        right_bottom = { x = spawn_pos.x + 2, y = spawn_pos.y + 2 },
     }
 
     -- 如果前面有车 (carriage_ahead)，说明正在传送中，不需要检查堵塞 (我们是接在它后面的)
     -- 只有当 carriage_ahead 为空 (第一节) 时才检查堵塞
     local is_clear = true
     if not entry_struct.carriage_ahead then
-        local count = exit_struct.surface.count_entities_filtered {
+        local count = exit_struct.surface.count_entities_filtered({
             area = check_area,
-            type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" }
-        }
-        if count > 0 then is_clear = false end
+            type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" },
+        })
+        if count > 0 then
+            is_clear = false
+        end
     end
 
     -- 堵塞处理 (SE 方案 - API 调用完全修正版)
@@ -266,7 +269,9 @@ function Teleport.teleport_next(entry_struct)
         log_tp("出口堵塞，暂停传送...")
         if carriage.train and not carriage.train.manual_mode then
             local sched = carriage.train.get_schedule()
-            if not sched then return end
+            if not sched then
+                return
+            end
 
             local station_entity = nil
             if entry_struct.children then
@@ -278,7 +283,9 @@ function Teleport.teleport_next(entry_struct)
                 end
             end
 
-            if not (station_entity and station_entity.connected_rail) then return end
+            if not (station_entity and station_entity.connected_rail) then
+                return
+            end
 
             local current_record = sched.get_record({ schedule_index = sched.current })
 
@@ -291,7 +298,7 @@ function Teleport.teleport_next(entry_struct)
                     wait_conditions = { { type = "time", ticks = 9999999 } },
 
                     -- 描述插入位置的字段
-                    index = { schedule_index = sched.current + 1 }
+                    index = { schedule_index = sched.current + 1 },
                 })
                 -- <<<<< [修正结束] <<<<<
 
@@ -306,24 +313,25 @@ function Teleport.teleport_next(entry_struct)
     -- 动态拼接检测
     -- 询问引擎：当前位置是否已经空出来，可以放置新车厢了？
     -- 如果前车还没被拖船拉远，这里会返回 false
-    local can_place = exit_struct.surface.can_place_entity {
+    local can_place = exit_struct.surface.can_place_entity({
         name = carriage.name,
         position = spawn_pos,
         direction = geo.direction,
-        force = carriage.force
-    }
+        force = carriage.force,
+    })
 
     if not can_place then
         return -- 位置没空出来，跳过本次循环，等待下一帧
     end
-
 
     -- 开始传送当前车厢
     log_tp("正在传送车厢: " .. carriage.name)
 
     -- 获取下一节车 (用于更新循环)
     local next_carriage = carriage.get_connected_rolling_stock(defines.rail_direction.front)
-    if next_carriage == carriage then next_carriage = nil end -- 防止环形误判
+    if next_carriage == carriage then
+        next_carriage = nil
+    end -- 防止环形误判
     -- 简单查找另一端
     if not next_carriage then
         next_carriage = carriage.get_connected_rolling_stock(defines.rail_direction.back)
@@ -337,15 +345,13 @@ function Teleport.teleport_next(entry_struct)
         exit_struct.saved_speed = carriage.train.speed
         exit_struct.old_train_id = carriage.train.id
 
-
-
         -- [SE] Started 事件
         if SE_TELEPORT_STARTED_EVENT_ID then
             script.raise_event(SE_TELEPORT_STARTED_EVENT_ID, {
                 train = carriage.train,
                 old_train_id_1 = carriage.train.id,
                 old_surface_index = entry_struct.surface.index,
-                teleporter = entry_struct.shell
+                teleporter = entry_struct.shell,
             })
         end
     end
@@ -377,7 +383,9 @@ function Teleport.teleport_next(entry_struct)
 
     -- 3. 计算角度差，判断是否"顺向" (头朝死胡同)
     local diff = math.abs(carriage_ori - entry_shell_ori)
-    if diff > 0.5 then diff = 1.0 - diff end
+    if diff > 0.5 then
+        diff = 1.0 - diff
+    end
     local is_nose_in = diff < 0.125
 
     log_tp("方向计算: 车厢ori=" .. carriage_ori .. ", 建筑ori=" .. entry_shell_ori .. ", 判定=" .. (is_nose_in and "顺向" or "逆向"))
@@ -399,14 +407,14 @@ function Teleport.teleport_next(entry_struct)
     -- <<<<< [修改结束] <<<<<
 
     -- 生成新车厢
-    local new_carriage = exit_struct.surface.create_entity {
+    local new_carriage = exit_struct.surface.create_entity({
         name = carriage.name,
         position = spawn_pos,
         -- [修改] 不再使用 direction，改用 orientation
         -- 这样引擎会直接接受准确的角度，不再需要猜测是8向还是16向
         orientation = target_ori,
-        force = carriage.force
-    }
+        force = carriage.force,
+    })
 
     if not new_carriage then
         log_tp("严重错误: 无法在出口创建车厢！")
@@ -420,8 +428,9 @@ function Teleport.teleport_next(entry_struct)
     Util.transfer_equipment_grid(carriage, new_carriage)
     new_carriage.health = carriage.health
     new_carriage.backer_name = carriage.backer_name or ""
-    if carriage.color then new_carriage.color = carriage.color end
-
+    if carriage.color then
+        new_carriage.color = carriage.color
+    end
 
     -- 尝试与上一节车厢强制连接 (防止引擎把它们当成两列车处理)
     if exit_struct.carriage_ahead and exit_struct.carriage_ahead.valid then
@@ -433,7 +442,6 @@ function Teleport.teleport_next(entry_struct)
     if saved_ahead_index then
         new_carriage.train.go_to_station(saved_ahead_index)
     end
-
 
     -- 司机转移逻辑 (严格照搬传送门)
     local driver = carriage.get_driver()
@@ -460,8 +468,6 @@ function Teleport.teleport_next(entry_struct)
         -- 2. 转移时刻表
         Schedule.transfer_schedule(carriage.train, new_carriage.train, real_station_name)
 
-
-
         -- 3. 保存新火车的时刻表索引 (解决重置问题)
         -- transfer_schedule 内部已经调用了 go_to_station，所以现在的 current 是正确的下一站
     end
@@ -483,15 +489,14 @@ function Teleport.teleport_next(entry_struct)
             index_before_tug = new_carriage.train.schedule.current
         end
 
-
         -- 生成新拖船 (Tug)
         local tug_pos = Util.vectors_add(exit_struct.shell.position, geo.tug_offset)
-        local tug = exit_struct.surface.create_entity {
+        local tug = exit_struct.surface.create_entity({
             name = "rift-rail-tug",
             position = tug_pos,
             direction = geo.direction,
-            force = new_carriage.force
-        }
+            force = new_carriage.force,
+        })
         if tug then
             tug.destructible = false
             exit_struct.tug = tug
@@ -518,7 +523,9 @@ end
 
 function Teleport.on_collider_died(event)
     local entity = event.entity
-    if not (entity and entity.valid) then return end
+    if not (entity and entity.valid) then
+        return
+    end
 
     -- 1. 反查建筑数据
     -- 碰撞器是 children 的一部分，或者是位置重叠
@@ -527,16 +534,20 @@ function Teleport.on_collider_died(event)
     -- 但遍历太慢。更好的方法是：on_entity_died 传入的 entity 我们去 State 查
     -- 但 State.get_struct 主要是查 Shell 或 Core。
     -- 临时方案：搜索附近的 Shell
-    local shells = entity.surface.find_entities_filtered {
+    local shells = entity.surface.find_entities_filtered({
         name = "rift-rail-entity",
         position = entity.position,
-        radius = 3
-    }
+        radius = 3,
+    })
     local shell = shells[1]
-    if not shell then return end
+    if not shell then
+        return
+    end
 
     local struct = State.get_struct(shell)
-    if not struct then return end
+    if not struct then
+        return
+    end
 
     -- 2. 模式检查
     -- 只有入口模式响应
@@ -562,12 +573,14 @@ function Teleport.on_collider_died(event)
         train = event.cause.train
     else
         -- 搜索附近的火车
-        local cars = entity.surface.find_entities_filtered {
+        local cars = entity.surface.find_entities_filtered({
             type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" },
             position = entity.position,
-            radius = 4
-        }
-        if cars[1] then train = cars[1].train end
+            radius = 4,
+        })
+        if cars[1] then
+            train = cars[1].train
+        end
     end
 
     if not train then
@@ -583,7 +596,6 @@ function Teleport.on_collider_died(event)
     -- [修改] 优先用撞击者作为第一节
     struct.carriage_behind = event.cause or train.front_stock
 
-
     -- 启动 active 标记，让 on_tick 接管
     struct.is_teleporting = true
     -- 注意：此时不重建 Collider，直到传送结束
@@ -593,9 +605,13 @@ end
 -- 持续动力 (每 tick 调用)
 -- =================================================================================
 function Teleport.manage_speed(struct)
-    if not struct.paired_to_id then return end
+    if not struct.paired_to_id then
+        return
+    end
     local exit_struct = State.get_struct_by_id(struct.paired_to_id)
-    if not (exit_struct and exit_struct.shell and exit_struct.shell.valid) then return end
+    if not (exit_struct and exit_struct.shell and exit_struct.shell.valid) then
+        return
+    end
 
     local carriage_entry = struct.carriage_behind
     local carriage_exit = exit_struct.carriage_ahead
@@ -642,8 +658,12 @@ function Teleport.manage_speed(struct)
                 local out_orientation = geo_exit.direction / 16.0
                 local head_orientation = train_exit.front_stock.orientation
                 local diff = math.abs(head_orientation - out_orientation)
-                if diff > 0.5 then diff = 1.0 - diff end
-                if diff > 0.25 then required_sign = -1 end
+                if diff > 0.5 then
+                    diff = 1.0 - diff
+                end
+                if diff > 0.25 then
+                    required_sign = -1
+                end
             end
 
             -- 应用速度
@@ -701,10 +721,14 @@ function Teleport.on_tick(event)
                     -- 1. 先进行几何估算 (准确率 90%)
                     local current_ori = front.orientation
                     local diff = math.abs(current_ori - target_ori)
-                    if diff > 0.5 then diff = 1.0 - diff end
+                    if diff > 0.5 then
+                        diff = 1.0 - diff
+                    end
 
                     local sign = 1
-                    if diff > 0.25 then sign = -1 end
+                    if diff > 0.25 then
+                        sign = -1
+                    end
 
                     -- 2. 尝试应用速度 (pcall 保护)
                     -- 这里的逻辑是：试图应用我们算出的方向。
@@ -717,7 +741,7 @@ function Teleport.on_tick(event)
                     -- 既然正向不对，那反向一定是合法的 (只要有路径)
                     if not success then
                         pcall(function()
-                            train.speed = velocity * (-sign)
+                            train.speed = velocity * -sign
                         end)
                     end
                 end
@@ -741,11 +765,11 @@ function Teleport.on_tick(event)
                 -- 为演示逻辑，假设位置正确
                 local pos = struct.shell.position -- 临时
 
-                local col = struct.surface.create_entity {
+                local col = struct.surface.create_entity({
                     name = "rift-rail-collider",
                     position = pos, -- 需修正
-                    force = struct.shell.force
-                }
+                    force = struct.shell.force,
+                })
                 struct.collider_needs_rebuild = false
             end
         end

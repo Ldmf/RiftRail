@@ -6,7 +6,9 @@
 local Util = {}
 
 -- 默认日志函数，会被 init 注入覆盖
-local log_debug = function(msg) log(msg) end
+local log_debug = function(msg)
+    log(msg)
+end
 
 function Util.init(deps)
     if deps.log_debug then
@@ -30,9 +32,11 @@ end
 
 -- 判断坐标是否在矩形区域内
 function Util.position_in_rect(rect, pos)
-    if not (rect and rect.left_top and rect.right_bottom and pos) then return false end
+    if not (rect and rect.left_top and rect.right_bottom and pos) then
+        return false
+    end
     return pos.x >= rect.left_top.x and pos.x <= rect.right_bottom.x and pos.y >= rect.left_top.y and
-        pos.y <= rect.right_bottom.y
+    pos.y <= rect.right_bottom.y
 end
 
 -- 获取车辆所属的火车ID (安全获取)
@@ -49,7 +53,9 @@ end
 
 -- 将源库存的物品移动到目标库存 (SE 风格：塞不进去就掉地上)
 function Util.se_move_inventory_items(source_inv, destination_inv)
-    if not (source_inv and source_inv.valid and destination_inv and destination_inv.valid) then return end
+    if not (source_inv and source_inv.valid and destination_inv and destination_inv.valid) then
+        return
+    end
 
     -- log_util("DEBUG: 正在转移库存物品，格子数: " .. #source_inv)
 
@@ -71,13 +77,13 @@ function Util.se_move_inventory_items(source_inv, destination_inv)
             log_util("!! 警告: 目标物品栏已满，部分物品将被丢弃在实体位置: " .. serpent.line(entity.position))
             for i = 1, #source_inv do
                 if source_inv[i].valid_for_read then
-                    entity.surface.spill_item_stack {
+                    entity.surface.spill_item_stack({
                         position = entity.position,
                         stack = source_inv[i],
                         enable_looted = true,
                         force = entity.force,
-                        allow_belts = false
-                    }
+                        allow_belts = false,
+                    })
                 end
             end
         end
@@ -142,13 +148,15 @@ end
 
 -- 转移装备网格 (模块装甲/车辆装备)
 function Util.transfer_equipment_grid(source_entity, destination_entity)
-    if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then return end
+    if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then
+        return
+    end
 
     if source_entity.grid and destination_entity.grid then
         log_util("DEBUG: 发现装备网格，开始转移装备...")
         for _, item_stack in pairs(source_entity.grid.equipment) do
             if item_stack then
-                destination_entity.grid.put { name = item_stack.name, position = item_stack.position }
+                destination_entity.grid.put({ name = item_stack.name, position = item_stack.position })
             end
         end
     end
@@ -164,7 +172,9 @@ function Util.transfer_all_inventories(source_entity, destination_entity)
     end
 
     -- 方案A: 尝试通用接口 get_inventories (适用于大多数 Mod 实体)
-    local success, inventories_or_error = pcall(function() return source_entity.get_inventories(source_entity) end)
+    local success, inventories_or_error = pcall(function()
+        return source_entity.get_inventories(source_entity)
+    end)
 
     if success and inventories_or_error then
         log_util("DEBUG: [方案A] 通用接口 get_inventories 调用成功，正在通过索引匹配转移...")
@@ -211,12 +221,16 @@ end
 
 -- 转移物品栏过滤器 (例如货车中间键设定的过滤)
 function Util.transfer_inventory_filters(source_entity, destination_entity, inventory_index)
-    if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then return end
+    if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then
+        return
+    end
 
     local source_inv = source_entity.get_inventory(inventory_index)
     local dest_inv = destination_entity.get_inventory(inventory_index)
 
-    if not (source_inv and dest_inv) then return end
+    if not (source_inv and dest_inv) then
+        return
+    end
 
     -- 1. 转移格子过滤器
     if source_inv.is_filtered() then
@@ -231,7 +245,9 @@ function Util.transfer_inventory_filters(source_entity, destination_entity, inve
     end
 
     -- 2. 转移红色限制条 (Inventory Bar)
-    local pcall_success, supports_bar = pcall(function() return destination_entity.supports_inventory_bar() end)
+    local pcall_success, supports_bar = pcall(function()
+        return destination_entity.supports_inventory_bar()
+    end)
     if pcall_success and supports_bar == true then
         pcall(function()
             local bar = source_entity.get_inventory_bar(inventory_index)
@@ -247,7 +263,9 @@ end
 
 -- 将 SignalID 转换为富文本字符串 (用于 GUI 显示)
 function Util.signal_to_richtext(signal_id)
-    if not (signal_id and signal_id.type and signal_id.name) then return "" end
+    if not (signal_id and signal_id.type and signal_id.name) then
+        return ""
+    end
     return "[" .. signal_id.type .. "=" .. signal_id.name .. "]"
 end
 

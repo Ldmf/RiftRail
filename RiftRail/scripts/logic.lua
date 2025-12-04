@@ -7,7 +7,6 @@ local GUI = nil
 local CybersynSE = nil -- [新增] 本地变量
 local log_debug = function() end
 
-
 function Logic.init(deps)
     State = deps.State
     GUI = deps.GUI
@@ -46,7 +45,9 @@ end
 -- [新增] 物理状态管理 (精准定点清除版)
 -- ============================================================================
 local function update_collider_state(struct)
-    if not (struct and struct.shell and struct.shell.valid) then return end
+    if not (struct and struct.shell and struct.shell.valid) then
+        return
+    end
 
     local surface = struct.shell.surface
     local center = struct.shell.position
@@ -73,23 +74,25 @@ local function update_collider_state(struct)
     -- 3. 精准定点清理
     -- 只在 target_pos 周围 0.5 格内寻找碰撞器
     -- 这样绝对不会误伤隔壁邻居 (因为邻居的碰撞器至少在 2 格以外)
-    local existing = surface.find_entities_filtered {
+    local existing = surface.find_entities_filtered({
         name = "rift-rail-collider",
         position = target_pos, -- 锁定目标点
-        radius = 0.5           -- 极小范围
-    }
+        radius = 0.5,          -- 极小范围
+    })
 
     for _, e in pairs(existing) do
-        if e.valid then e.destroy() end
+        if e.valid then
+            e.destroy()
+        end
     end
 
     -- 4. 如果是 [入口] 模式，则在原地创建新的碰撞器
     if struct.mode == "entry" then
-        local collider = surface.create_entity {
+        local collider = surface.create_entity({
             name = "rift-rail-collider",
             position = target_pos, -- 使用相同的坐标
-            force = struct.shell.force
-        }
+            force = struct.shell.force,
+        })
         -- log_debug("Logic: 已在精准坐标 (" .. target_pos.x .. "," .. target_pos.y .. ") 重建碰撞器。")
     end
 end
@@ -100,7 +103,9 @@ end
 function Logic.update_name(player_index, portal_id, new_string)
     local player = game.get_player(player_index)
     local my_data = State.get_struct_by_id(portal_id)
-    if not (player and my_data) then return end
+    if not (player and my_data) then
+        return
+    end
 
     -- 1. 解析输入
     local icon_type, icon_name, plain_name = string.match(new_string, "%[([%w%-]+)=([%w%-]+)%]%s*(.*)")
@@ -151,12 +156,18 @@ end
 -- ============================================================================
 function Logic.set_mode(player_index, portal_id, mode, skip_sync)
     local player = nil
-    if player_index then player = game.get_player(player_index) end
+    if player_index then
+        player = game.get_player(player_index)
+    end
 
     local my_data = State.get_struct_by_id(portal_id)
-    if not my_data then return end
+    if not my_data then
+        return
+    end
 
-    if my_data.mode == mode then return end
+    if my_data.mode == mode then
+        return
+    end
 
     my_data.mode = mode
 
@@ -165,9 +176,15 @@ function Logic.set_mode(player_index, portal_id, mode, skip_sync)
 
     -- 消息提示
     if player then
-        if mode == "entry" then player.print({ "gui.rift-rail-mode-entry" }) end
-        if mode == "exit" then player.print({ "gui.rift-rail-mode-exit" }) end
-        if mode == "neutral" then player.print({ "gui.rift-rail-mode-neutral" }) end
+        if mode == "entry" then
+            player.print({ "gui.rift-rail-mode-entry" })
+        end
+        if mode == "exit" then
+            player.print({ "gui.rift-rail-mode-exit" })
+        end
+        if mode == "neutral" then
+            player.print({ "gui.rift-rail-mode-neutral" })
+        end
     end
 
     -- 智能同步配对对象
@@ -175,8 +192,12 @@ function Logic.set_mode(player_index, portal_id, mode, skip_sync)
         local partner = State.get_struct_by_id(my_data.paired_to_id)
         if partner then
             local partner_mode = "neutral"
-            if mode == "entry" then partner_mode = "exit" end
-            if mode == "exit" then partner_mode = "entry" end
+            if mode == "entry" then
+                partner_mode = "exit"
+            end
+            if mode == "exit" then
+                partner_mode = "entry"
+            end
 
             Logic.set_mode(nil, partner.id, partner_mode, true)
 
@@ -197,7 +218,9 @@ function Logic.pair_portals(player_index, source_id, target_id)
     local source = State.get_struct_by_id(source_id)
     local target = State.get_struct_by_id(target_id)
 
-    if not (source and target) then return end
+    if not (source and target) then
+        return
+    end
 
     if source.paired_to_id then
         player.print({ "messages.rift-rail-error-self-already-paired" })
@@ -233,7 +256,9 @@ end
 function Logic.unpair_portals(player_index, portal_id)
     local player = game.get_player(player_index)
     local source = State.get_struct_by_id(portal_id)
-    if not source or not source.paired_to_id then return end
+    if not source or not source.paired_to_id then
+        return
+    end
 
     local target = State.get_struct_by_id(source.paired_to_id)
     local target_name = target and target.name or "Unknown"
@@ -256,7 +281,9 @@ end
 function Logic.open_remote_view(player_index, portal_id)
     local player = game.get_player(player_index)
     local my_data = State.get_struct_by_id(portal_id)
-    if not (player and my_data and my_data.paired_to_id) then return end
+    if not (player and my_data and my_data.paired_to_id) then
+        return
+    end
 
     local target = State.get_struct_by_id(my_data.paired_to_id)
     if target and target.shell and target.shell.valid then
@@ -265,7 +292,7 @@ function Logic.open_remote_view(player_index, portal_id)
             type = defines.controllers.remote,
             position = target.shell.position,
             surface = target.shell.surface,
-            zoom = player.zoom
+            zoom = player.zoom,
         })
     end
 end
@@ -277,7 +304,9 @@ function Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
     local player = game.get_player(player_index)
     local my_data = State.get_struct_by_id(portal_id)
 
-    if not (player and my_data) then return end
+    if not (player and my_data) then
+        return
+    end
 
     -- 获取配对对象
     local partner = nil
