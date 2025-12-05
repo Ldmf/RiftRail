@@ -243,7 +243,7 @@ function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
     end
 
     -- 1. 无条件注销旧连接
-    -- CybersynSE.update_connection(old_struct, partner, false, nil)
+    CybersynSE.update_connection(old_struct, partner, false, nil)
 
     -- 2. 判断逻辑
     local is_takeoff = false
