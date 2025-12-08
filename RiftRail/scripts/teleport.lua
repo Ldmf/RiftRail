@@ -212,7 +212,7 @@ local function finish_teleport(entry_struct, exit_struct)
 		local saved_index_before_tug_death = nil
 		-- 尝试通过 carriage_ahead 获取火车
 		local train_ref = exit_struct.carriage_ahead and exit_struct.carriage_ahead.valid and
-			exit_struct.carriage_ahead.train
+		exit_struct.carriage_ahead.train
 		if train_ref and train_ref.valid and train_ref.schedule then
 			saved_index_before_tug_death = train_ref.schedule.current
 		end
@@ -287,7 +287,7 @@ local function finish_teleport(entry_struct, exit_struct)
 		if SE_TELEPORT_FINISHED_EVENT_ID and exit_struct.old_train_id then
 			-- >>>>> [新增调试日志] >>>>>
 			log_tp("【DEBUG】准备触发 FINISHED 事件: new_train_id = " ..
-				tostring(final_train.id) .. ", old_train_id = " .. tostring(exit_struct.old_train_id))
+			tostring(final_train.id) .. ", old_train_id = " .. tostring(exit_struct.old_train_id))
 			-- <<<<< [新增结束] <<<<<
 			log_tp("SE 兼容: 触发 on_train_teleport_finished")
 			script.raise_event(SE_TELEPORT_FINISHED_EVENT_ID, {
@@ -307,26 +307,16 @@ local function finish_teleport(entry_struct, exit_struct)
 	exit_struct.carriage_ahead = nil
 	exit_struct.old_train_id = nil
 
-	-- 6. 【关键】重建入口的碰撞器 (按照传送门Mod逻辑，整列传完才重建)
-	-- 注意：Rift Rail 的 Builder 可能没有自动重建逻辑，我们需要手动重建
+	-- 6. 【关键】标记需要重建入口碰撞器
+	-- 我们不在这里直接创建，而是交给 on_tick 去计算正确的坐标并创建
 	if entry_struct.shell and entry_struct.shell.valid then
-		local builder_data = State.get_struct(entry_struct.shell)
-		if builder_data then
-			-- 这里的逻辑需要根据 Builder.lua 的定义。
-			-- 简单起见，我们重新创建一个 rift-rail-collider
-			-- 由于 collider 是 data.children 的一部分，为了严谨，我们应该复用位置
-			-- 暂时先不自动重建，依赖 control.lua 的 on_tick 检查或 Builder 的逻辑
-			-- **修正**：按照传送门逻辑，这里必须重建，否则下一辆车无法触发
-			local collider = entry_struct.surface.create_entity({
-				name = "rift-rail-collider",
-				position = { x = entry_struct.shell.position.x, y = entry_struct.shell.position.y - 2 }, -- 默认位置，需修正
-				force = entry_struct.shell.force,
-			})
-			-- 注意：实际位置需要根据旋转计算。为防出错，建议在 Teleport.tick 里做延迟检查重建
-			-- 或者在这里简单调用一个 Builder 的修复函数（如果有）
-			-- 鉴于要求“照搬逻辑”，传送门是在 on_tick 里重建的。我们在 on_tick 处理。
-			entry_struct.collider_needs_rebuild = true
+		entry_struct.collider_needs_rebuild = true
+
+		-- [保险措施] 确保它在活跃列表中，这样 on_tick 才会去处理它
+		if not storage.active_teleporters then
+			storage.active_teleporters = {}
 		end
+		storage.active_teleporters[entry_struct.unit_number] = entry_struct
 	end
 end
 
@@ -609,7 +599,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
 	-- 更新链表指针
 	entry_struct.carriage_ahead = new_carriage -- 记录刚传过去的这节 (虽然没什么用，但保持一致)
-	exit_struct.carriage_ahead = new_carriage -- 记录出口的最前头 (用于拉动)
+	exit_struct.carriage_ahead = new_carriage  -- 记录出口的最前头 (用于拉动)
 
 	-- 准备下一节
 	if next_carriage and next_carriage.valid then
@@ -702,22 +692,25 @@ function Teleport.on_collider_died(event)
 		end
 	end
 
+	-- [修改] 逻辑分流与入队
 	if not train then
+		-- 情况 A: 没有火车（被虫子咬了，或者非火车撞击），只需重建
 		struct.collider_needs_rebuild = true
-		return
+	else
+		-- 情况 B: 有火车，触发传送逻辑
+		log_tp("触发传送！入口ID: " .. struct.id .. " 火车ID: " .. train.id)
+
+		-- [修改] 优先用撞击者作为第一节
+		struct.carriage_behind = event.cause or train.front_stock
+		struct.is_teleporting = true
 	end
 
-	log_tp("触发传送！入口ID: " .. struct.id .. " 火车ID: " .. train.id)
-
-	-- 5. 初始化传送序列
-	-- 记录第一节车厢 (从车头开始，还是从撞击的那节开始？通常是整列)
-	-- 这里我们取 front_stock (车头)，或者 back_stock，取决于行驶方向
-	-- [修改] 优先用撞击者作为第一节
-	struct.carriage_behind = event.cause or train.front_stock
-
-	-- 启动 active 标记，让 on_tick 接管
-	struct.is_teleporting = true
-	-- 注意：此时不重建 Collider，直到传送结束
+	-- [新增] 将该建筑加入活跃列表 (Active List)
+	-- 这样 on_tick 就会只处理它，而不必遍历全图
+	if not storage.active_teleporters then
+		storage.active_teleporters = {}
+	end
+	storage.active_teleporters[struct.unit_number] = struct
 end
 
 -- =================================================================================
@@ -824,61 +817,85 @@ end
 -- =================================================================================
 
 function Teleport.on_tick(event)
-	-- >>>>> [新增] 处理速度恢复队列 (延迟一帧执行) >>>>>
-	-- 这是一个简单的 Tick Task 系统
-	-- 如果上一帧有火车刚切回自动模式，它们会在这里等待恢复速度
-	-- >>>>> [修改] 最终版：自动试错恢复速度 >>>>>
+	-- [优化] 只遍历活跃列表 (Active List)，大幅降低 UPS 消耗
+	local active_list = storage.active_teleporters or {}
 
-	-- <<<<< [修改结束] <<<<<
-	-- 遍历所有传送门
-	-- 注意：效率优化，实际应该只遍历 active 的
-	local all = State.get_all_structs()
-	for _, struct in pairs(all) do
-		-- 1. 重建碰撞器逻辑 (延迟一帧或传送结束后)
-		if struct.collider_needs_rebuild then
-			if struct.shell and struct.shell.valid then
-				-- 计算位置 (需根据旋转)
-				-- 简化：查找偏移量。Builder 里 collider 在 y=-2 (North)
-				-- 旋转逻辑同 Builder
-				local offset = { x = 0, y = -2 }
-				-- (此处省略旋转计算，实际应调用 Builder 的 helper 或硬编码)
-				-- 为演示逻辑，假设位置正确
-				local pos = struct.shell.position -- 临时
+	-- 1. 提取 ID 并排序 (多人游戏防不同步 Desync 的关键步骤)
+	local ids = {}
+	for id, _ in pairs(active_list) do
+		table.insert(ids, id)
+	end
+	table.sort(ids)
 
-				local col = struct.surface.create_entity({
-					name = "rift-rail-collider",
-					position = pos, -- 需修正
-					force = struct.shell.force,
-				})
-				struct.collider_needs_rebuild = false
-			end
-		end
+	-- 2. 遍历活跃对象
+	for _, id in ipairs(ids) do
+		local struct = active_list[id]
 
-		-- 2. 执行传送序列
-		if struct.is_teleporting then
-			-- 频率控制：每 4 tick 一次 (照搬传送门)
-			if event.tick % 4 == struct.unit_number % 4 then
-				-- >>>>> [新增修改] 只要引用存在，就进入处理 (即使 .valid 为 false) >>>>>
-				-- 原代码: if struct.carriage_behind and struct.carriage_behind.valid then
-				if struct.carriage_behind then
-					-- [修改] 查找出口并将 exit_struct 作为参数传入
-					local exit_struct = State.get_struct_by_id(struct.paired_to_id)
+		-- [保护] 确保数据还在
+		if struct then
+			-- A. 重建碰撞器逻辑 (修复坐标计算)
+			if struct.collider_needs_rebuild then
+				if struct.shell and struct.shell.valid then
+					-- 1. 根据建筑方向计算偏移量 (North: y-2, East: x+2, South: y+2, West: x-2)
+					local dir = struct.shell.direction
+					local offset = { x = 0, y = 0 }
 
-					-- 让 teleport_next 内部去判断有效性。
-					Teleport.teleport_next(struct, exit_struct)
-				else
-					-- 只有当 struct.carriage_behind 真的为 nil (正常传送完毕) 时，才关闭状态
-					log_debug("Teleport [Tick]: 传送序列正常结束，关闭状态。")
-					struct.is_teleporting = false
+					if dir == 0 then
+						offset = { x = 0, y = -2 } -- North
+					elseif dir == 4 then
+						offset = { x = 2, y = 0 }  -- East
+					elseif dir == 8 then
+						offset = { x = 0, y = 2 }  -- South
+					elseif dir == 12 then
+						offset = { x = -2, y = 0 } -- West
+					end
+
+					-- 2. 计算绝对坐标
+					local final_pos = {
+						x = struct.shell.position.x + offset.x,
+						y = struct.shell.position.y + offset.y,
+					}
+
+					-- 3. 创建实体
+					struct.surface.create_entity({
+						name = "rift-rail-collider",
+						position = final_pos,
+						force = struct.shell.force,
+					})
+
+					-- 4. 标记完成
+					struct.collider_needs_rebuild = false
 				end
-				-- <<<<< [修改结束] <<<<<
 			end
-		end
 
-		-- 3. 持续动力
-		-- [性能优化] 只为正在传送的传送门执行昂贵的动力计算
-		if struct.is_teleporting then
-			Teleport.manage_speed(struct)
+			-- B. 执行传送序列
+			if struct.is_teleporting then
+				-- 频率控制：每 4 tick 一次
+				if event.tick % 4 == struct.unit_number % 4 then
+					if struct.carriage_behind then
+						-- [关键] 查找出口并将 exit_struct 作为参数传入
+						local exit_struct = State.get_struct_by_id(struct.paired_to_id)
+						Teleport.teleport_next(struct, exit_struct)
+					else
+						log_tp("传送序列正常结束，关闭状态。")
+						struct.is_teleporting = false
+					end
+				end
+			end
+
+			-- C. 持续动力
+			if struct.is_teleporting then
+				Teleport.manage_speed(struct)
+			end
+
+			-- [新增] 出队检查 (Cleanup)
+			-- 如果既不在传送，也不需要重建，说明任务完成，移出活跃列表
+			if not struct.is_teleporting and not struct.collider_needs_rebuild then
+				storage.active_teleporters[id] = nil
+			end
+		else
+			-- 如果 struct 数据丢失 (比如被脚本删了)，清理残留引用
+			storage.active_teleporters[id] = nil
 		end
 	end
 end

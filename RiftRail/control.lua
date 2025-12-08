@@ -81,23 +81,35 @@ end
 -- 5. 事件注册
 -- ============================================================================
 
--- A. 建造事件 (保持不变)
-local build_events = {
-	defines.events.on_built_entity,
-	defines.events.on_robot_built_entity,
+-- [新增] 实体过滤器：只监听本模组相关的实体
+local rr_filters = {
+	{ filter = "name", name = "rift-rail-entity" },
+	{ filter = "name", name = "rift-rail-placer-entity" },
+	{ filter = "name", name = "rift-rail-collider" },
+	{ filter = "name", name = "rift-rail-station" },
+	{ filter = "name", name = "rift-rail-core" },
+	{ filter = "name", name = "rift-rail-signal" },
+	{ filter = "name", name = "rift-rail-internal-rail" },
+	{ filter = "name", name = "rift-rail-blocker" },
+	{ filter = "name", name = "rift-rail-lamp" },
+}
+
+-- A. 建造事件 (拆分优化版 - 修正 API 限制)
+-- 1. 原生建造 (玩家): 单独注册 + 过滤器
+script.on_event(defines.events.on_built_entity, Builder.on_built, rr_filters)
+
+-- 2. 原生建造 (机器人): 单独注册 + 过滤器
+script.on_event(defines.events.on_robot_built_entity, Builder.on_built, rr_filters)
+
+-- 3. 脚本建造: 不支持过滤器，保持批量注册 (无变化)
+script.on_event({
 	defines.events.script_raised_built,
 	defines.events.script_raised_revive,
-}
-script.on_event(build_events, Builder.on_built)
+}, Builder.on_built)
 
--- B. 拆除/挖掘事件 (不包含死亡事件，死亡事件单独处理)
-local mine_events = {
-	defines.events.on_player_mined_entity,
-	defines.events.on_robot_mined_entity,
-	defines.events.script_raised_destroy,
-}
--- [修改] 使用匿名函数拦截
-script.on_event(mine_events, function(event)
+-- B. 拆除/挖掘事件 (拆分优化版 - 修正 API 限制)
+-- 定义处理函数 (保持不变)
+local function on_mined_handler(event)
 	-- 1. 先通知 Cybersyn 清理连接
 	local entity = event.entity
 	if entity and entity.valid then
@@ -106,13 +118,21 @@ script.on_event(mine_events, function(event)
 			CybersynSE.on_portal_destroyed(struct)
 		end
 	end
-
 	-- 2. 再执行原来的销毁逻辑
 	Builder.on_destroy(event)
-end)
+end
+
+-- 1. 原生拆除 (玩家): 单独注册 + 过滤器
+script.on_event(defines.events.on_player_mined_entity, on_mined_handler, rr_filters)
+
+-- 2. 原生拆除 (机器人): 单独注册 + 过滤器
+script.on_event(defines.events.on_robot_mined_entity, on_mined_handler, rr_filters)
+
+-- 3. 脚本拆除: 不使用过滤器 (无变化)
+script.on_event(defines.events.script_raised_destroy, on_mined_handler)
 
 -- C. [核心修改] 死亡事件分流 (on_entity_died)
--- 我们需要区分是 "碰撞器被撞死(触发传送)" 还是 "建筑被打爆(触发拆除)"
+-- [优化] 加入过滤器，此时虫子死亡绝对不会触发此函数，彻底消除战斗卡顿
 script.on_event(defines.events.on_entity_died, function(event)
 	local entity = event.entity
 	if not (entity and entity.valid) then
@@ -131,7 +151,7 @@ script.on_event(defines.events.on_entity_died, function(event)
 		Builder.on_destroy(event)
 	end
 	-- 对于其他任何实体（火车、虫子、树）的死亡，我们一概不管
-end)
+end, rr_filters) -- <--- 过滤器加在这里 (作为第三个参数)
 
 -- D. [修改] Tick 循环
 script.on_event(defines.events.on_tick, function(event)
@@ -388,6 +408,58 @@ script.on_event(defines.events.on_entity_settings_pasted, function(event)
 		if DEBUG_MODE then
 			player.print("[RiftRail] 设置已粘贴: " .. source_data.name .. " -> " .. dest_data.name)
 		end
+	end
+end)
+-- ============================================================================
+-- [新增] 监听设置变更：处理紧急修复指令
+-- ============================================================================
+script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
+	-- 只有当开关被打开时才执行
+	if event.setting == "rift-rail-reset-colliders" and settings.global["rift-rail-reset-colliders"].value then
+		-- 1. 【焦土】销毁全图所有的旧碰撞器
+		for _, surface in pairs(game.surfaces) do
+			local old_colliders = surface.find_entities_filtered({ name = "rift-rail-collider" })
+			for _, c in pairs(old_colliders) do
+				c.destroy()
+			end
+		end
+
+		-- 2. 【重生】在正确位置重新生成
+		if storage.rift_rails then
+			for _, struct in pairs(storage.rift_rails) do
+				if struct.shell and struct.shell.valid then
+					-- 只有入口和中立需要碰撞器
+					if struct.mode == "entry" or struct.mode == "neutral" then
+						local dir = struct.shell.direction
+						local offset = { x = 0, y = 0 }
+
+						-- 偏移量计算
+						if dir == 0 then
+							offset = { x = 0, y = -2 } -- North
+						elseif dir == 4 then
+							offset = { x = 2, y = 0 }  -- East
+						elseif dir == 8 then
+							offset = { x = 0, y = 2 }  -- South
+						elseif dir == 12 then
+							offset = { x = -2, y = 0 } -- West
+						end
+
+						struct.surface.create_entity({
+							name = "rift-rail-collider",
+							position = { x = struct.shell.position.x + offset.x, y = struct.shell.position.y + offset.y },
+							force = struct.shell.force,
+						})
+					end
+					-- 重置标记
+					struct.collider_needs_rebuild = false
+				end
+			end
+		end
+
+		-- 3. 【自复位】执行完后自动把开关关掉
+		settings.global["rift-rail-reset-colliders"] = { value = false }
+
+		game.print({ "messages.rift-rail-colliders-reset" })
 	end
 end)
 

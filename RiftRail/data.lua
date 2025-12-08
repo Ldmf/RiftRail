@@ -6,8 +6,8 @@
 local sprite_left = {
 	filename = "__RiftRail__/graphics/sprite_horiz_atlas_placer.png", -- 指向新图集
 	priority = "high",
-	width = 1344,                                                     -- 单个贴图的宽度
-	height = 528,                                                     -- 单个贴图的高度
+	width = 1344,                                                  -- 单个贴图的宽度
+	height = 528,                                                  -- 单个贴图的高度
 	frame_count = 1,
 	direction_count = 1,
 	shift = { 0, 0 },
@@ -34,8 +34,8 @@ local sprite_right = {
 local sprite_down = {
 	filename = "__RiftRail__/graphics/sprite_vert_atlas_placer.png", -- 指向新图集
 	priority = "high",
-	width = 528,                                                     -- 单个贴图的宽度
-	height = 1344,                                                   -- 单个贴图的高度
+	width = 528,                                                  -- 单个贴图的宽度
+	height = 1344,                                                -- 单个贴图的高度
 	frame_count = 1,
 	direction_count = 1,
 	shift = { 0, 0 },
@@ -77,7 +77,7 @@ local blank_sprite = {
 local entity_sprite = {
 	filename = "__RiftRail__/graphics/entity.png",
 	priority = "high",
-	width = 256,  -- 4格
+	width = 256, -- 4格
 	height = 768, -- 12格
 	frame_count = 1,
 	direction_count = 1,
@@ -286,7 +286,7 @@ data:extend({
 				},
 			},
 		},
-		render_layer = "lower-object",
+		render_layer = "train-stop-top",
 		-- secondary_draw_order = -10,
 	},
 
@@ -413,7 +413,7 @@ local internal_rail = data.raw["legacy-straight-rail"]["rift-rail-internal-rail"
 
 -- [保留] 关键逻辑：自动寻找正确的原版铁轨原型
 local source_rail = data.raw["legacy-straight-rail"]["legacy-straight-rail"] or
-data.raw["legacy-straight-rail"]["straight-rail"]
+	data.raw["legacy-straight-rail"]["straight-rail"]
 
 -- [修改] 手动复制属性，但刻意跳过 "pictures"
 -- 这样我们继承了铁轨的所有物理属性，但没继承它的外观
@@ -623,10 +623,10 @@ blocker.collision_box = create_centered_box(2, 2)
 -- 确保它能阻挡玩家、车辆和铁轨铺设
 blocker.collision_mask = {
 	layers = {
-		["water_tile"] = true,
-		["item"] = true,
-		["object"] = true, -- 移除！这样铁轨规划器就不会认为它是个障碍物
-		["player"] = true,
+		-- ["water_tile"] = true,
+		-- ["item"] = true,
+		-- ["object"] = true, -- 移除！这样铁轨规划器就不会认为它是个障碍物
+		-- ["player"] = true,
 		-- ["train"] = true, -- 允许火车通行
 	},
 }

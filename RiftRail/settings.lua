@@ -24,4 +24,14 @@ data:extend({
         order = "z",                     -- 放在设置菜单的末尾
         localised_name = { "mod-setting-name.rift-rail-debug-mode" },
     },
+    -- [新增] 紧急修复开关
+    {
+        type = "bool-setting",
+        name = "rift-rail-reset-colliders",
+        setting_type = "runtime-global", -- 地图设置，只有管理员能改
+        default_value = false,
+        order = "z-b",                   -- 排在最后
+        localised_name = { "mod-setting-name.rift-rail-reset-colliders" },
+        localised_description = { "mod-setting-description.rift-rail-reset-colliders" },
+    },
 })
