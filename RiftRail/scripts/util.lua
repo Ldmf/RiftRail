@@ -162,7 +162,7 @@ function Util.transfer_equipment_grid(source_entity, destination_entity)
 	end
 end
 
--- 转移所有物品栏 (智能判断类型)
+-- 转移所有物品栏 (智能判断类型 - 调整顺序版：先判断类型，后尝试通用接口)
 function Util.transfer_all_inventories(source_entity, destination_entity)
 	log_util("DEBUG: 开始转移实体所有物品栏 (ID: " .. source_entity.unit_number .. " -> " .. destination_entity.unit_number .. ")")
 
@@ -171,13 +171,58 @@ function Util.transfer_all_inventories(source_entity, destination_entity)
 		return
 	end
 
-	-- 方案A: 尝试通用接口 get_inventories (适用于大多数 Mod 实体)
+	-- ========================================================================
+	-- [调整顺序] 方案B: 根据类型手动处理 (现在作为首选方案执行)
+	-- ========================================================================
+	local entity_type = source_entity.type
+	log_util("DEBUG: [首选方案] 正在检查实体类型 (Type: " .. entity_type .. ")...")
+
+	local type_handled = true -- 标记是否成功匹配了类型
+
+	if entity_type == "cargo-wagon" then
+		log_util("DEBUG: [首选方案] 匹配到货运车厢，执行标准转移。")
+		local source_inv = source_entity.get_inventory(defines.inventory.cargo_wagon)
+		local dest_inv = destination_entity.get_inventory(defines.inventory.cargo_wagon)
+		Util.se_move_inventory_items(source_inv, dest_inv)
+	elseif entity_type == "locomotive" then
+		log_util("DEBUG: [首选方案] 匹配到机车，执行燃烧室与燃料转移。")
+		Util.se_transfer_burner(source_entity, destination_entity)
+	elseif entity_type == "artillery-wagon" then
+		log_util("DEBUG: [首选方案] 匹配到火炮车厢，执行弹药转移。")
+		local source_inv = source_entity.get_inventory(defines.inventory.artillery_wagon_ammo)
+		local dest_inv = destination_entity.get_inventory(defines.inventory.artillery_wagon_ammo)
+		Util.se_move_inventory_items(source_inv, dest_inv)
+	elseif entity_type == "fluid-wagon" then
+		log_util("DEBUG: [首选方案] 匹配到流体车厢，检查并转移流体栏。")
+		if defines.inventory.fluid_wagon then
+			local source_inv = source_entity.get_inventory(defines.inventory.fluid_wagon)
+			if source_inv then
+				Util.se_move_inventory_items(source_inv, destination_entity.get_inventory(defines.inventory.fluid_wagon))
+			end
+		end
+	else
+		-- 如果没匹配到已知类型，则标记为未处理，继续向下执行方案 A
+		type_handled = false
+		log_util("DEBUG: [首选方案] 未知或未定义的类型 '" .. entity_type .. "'，转入 [备用方案]...")
+	end
+
+	-- 如果方案 B 成功匹配并执行了，直接返回，不再尝试方案 A
+	if type_handled then
+		log_util("DEBUG: [首选方案] 转移逻辑执行完毕。")
+		return
+	end
+
+	-- ========================================================================
+	-- [调整顺序] 方案A: 尝试通用接口 get_inventories (现在作为备用方案执行)
+	-- ========================================================================
+	log_util("DEBUG: [备用方案] 尝试调用通用接口 get_inventories...")
+
 	local success, inventories_or_error = pcall(function()
 		return source_entity.get_inventories(source_entity)
 	end)
 
 	if success and inventories_or_error then
-		log_util("DEBUG: [方案A] 通用接口 get_inventories 调用成功，正在通过索引匹配转移...")
+		log_util("DEBUG: [备用方案] 通用接口调用成功，正在通过索引匹配转移...")
 		local source_inventories = inventories_or_error
 		local dest_inventories = destination_entity.get_inventories(destination_entity)
 
@@ -187,35 +232,11 @@ function Util.transfer_all_inventories(source_entity, destination_entity)
 					Util.se_move_inventory_items(source_inv, dest_inventories[i])
 				end
 			end
-			return -- 方案A成功，直接返回
+			return -- 方案A成功
 		end
 	else
-		log_util("DEBUG: [方案A] 通用接口不可用，转入 [方案B] 类型判断...")
-	end
-
-	-- 方案B: 根据类型手动处理 (SE后备方案，针对特定车厢类型)
-	local entity_type = source_entity.type
-	log_util("DEBUG: [方案B] 实体类型为: " .. entity_type)
-
-	if entity_type == "cargo-wagon" then
-		local source_inv = source_entity.get_inventory(defines.inventory.cargo_wagon)
-		local dest_inv = destination_entity.get_inventory(defines.inventory.cargo_wagon)
-		Util.se_move_inventory_items(source_inv, dest_inv)
-	elseif entity_type == "locomotive" then
-		Util.se_transfer_burner(source_entity, destination_entity)
-	elseif entity_type == "artillery-wagon" then
-		local source_inv = source_entity.get_inventory(defines.inventory.artillery_wagon_ammo)
-		local dest_inv = destination_entity.get_inventory(defines.inventory.artillery_wagon_ammo)
-		Util.se_move_inventory_items(source_inv, dest_inv)
-	elseif entity_type == "fluid-wagon" then
-		if defines.inventory.fluid_wagon then
-			local source_inv = source_entity.get_inventory(defines.inventory.fluid_wagon)
-			if source_inv then
-				Util.se_move_inventory_items(source_inv, destination_entity.get_inventory(defines.inventory.fluid_wagon))
-			end
-		end
-	else
-		log_util("警告: 未知的实体类型 '" .. entity_type .. "'，无法确定如何转移物品。")
+		-- 只有当两种方案都失败时，才输出警告
+		log_util("警告: [备用方案] 通用接口不可用，且类型不在首选列表中。转移可能未完成。")
 	end
 end
 
