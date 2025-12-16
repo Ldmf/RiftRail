@@ -1,12 +1,14 @@
 -- scripts/builder.lua v0.0.10
 -- 功能：移除所有多余的方向映射，直接使用 Factorio 标准 16方向制 (0, 4, 8, 12)
 
+-- builder.lua
 local Builder = {}
+local State = nil -- <<-- [新增] 在文件顶部声明一个局部变量来存储 State
 
-local DEBUG_MODE_ENABLED = settings.global["rift-rail-debug-mode"].value
 local log_debug = function() end
 
 function Builder.init(deps)
+    State = deps.State -- <<-- [新增] 接收从 control.lua 传来的 State
     if deps.log_debug then
         log_debug = deps.log_debug
     end

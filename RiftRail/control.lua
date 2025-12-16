@@ -33,7 +33,8 @@ local CybersynScheduler = require("scripts.cybersyn_scheduler") -- [新增]
 if Builder.init then
     Builder.init({
         log_debug = log_debug,
-        CybersynSE = CybersynSE, -- (Builder目前暂不直接调用，清理逻辑我们接管了)
+        State = State,
+        CybersynSE = CybersynSE,
     })
 end
 
