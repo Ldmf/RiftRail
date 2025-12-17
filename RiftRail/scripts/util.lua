@@ -5,8 +5,6 @@
 
 local Util = {}
 
-local DEBUG_MODE_ENABLED = settings.global["rift-rail-debug-mode"].value
-
 -- 默认日志函数，会被 init 注入覆盖
 local log_debug = function(msg)
     log(msg)
@@ -20,8 +18,8 @@ end
 
 -- 本地日志包装 (统一前缀)
 local function log_util(message)
-    if DEBUG_MODE_ENABLED then
-        log_debug("[Util] " .. message)
+    if RiftRail.DEBUG_MODE_ENABLED then
+        log_debug("[RiftRail:Util] " .. message)
     end
 end
 
@@ -202,10 +200,6 @@ function Util.transfer_all_inventories(source_entity, destination_entity)
                 Util.se_move_inventory_items(source_inv, destination_entity.get_inventory(defines.inventory.fluid_wagon))
             end
         end
-    else
-        -- 如果没匹配到已知类型，则标记为未处理，继续向下执行方案 A
-        type_handled = false
-        log_util("DEBUG: [首选方案] 未知或未定义的类型 '" .. entity_type .. "'，转入 [备用方案]...")
     end
 
     -- 如果方案 B 成功匹配并执行了，直接返回，不再尝试方案 A

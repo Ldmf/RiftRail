@@ -7,15 +7,14 @@ local GUI = {}
 
 local State = nil
 
-local DEBUG_MODE_ENABLED = settings.global["rift-rail-debug-mode"].value
 local log_debug = function() end
 
 function GUI.init(dependencies)
     State = dependencies.State
     log_debug = dependencies.log_debug
     if log_debug then
-        if DEBUG_MODE_ENABLED then
-            log_debug("GUI 模块初始化完成 (Relative Mode)。")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_debug("[RiftRail:GUI] 模块初始化完成 (Relative Mode)。")
         end
     end
 end
@@ -90,8 +89,8 @@ function GUI.build_or_update(player, entity)
     -- 1. 获取数据
     local my_data = State.get_struct(entity)
     if not my_data then
-        if DEBUG_MODE_ENABLED then
-            log_debug("GUI 错误: 无法找到实体关联的数据。")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_debug("[RiftRail:GUI] 错误: 无法找到实体关联的数据。")
         end
         return
     end
@@ -137,8 +136,8 @@ function GUI.build_or_update(player, entity)
     }
 
     if log_debug then
-        if DEBUG_MODE_ENABLED then
-            log_debug("GUI: 标题已更新为本地化名称 (ID: " .. my_data.id .. ")")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_debug("[RiftRail:GUI] 标题已更新为本地化名称 (ID: " .. my_data.id .. ")")
         end
     end
 
@@ -160,8 +159,8 @@ function GUI.build_or_update(player, entity)
     player.opened = frame
 
     if log_debug then
-        if DEBUG_MODE_ENABLED then
-            log_debug("GUI: 已创建独立窗口并接管 player.opened")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_debug("[RiftRail:GUI] 已创建独立窗口并接管 player.opened")
         end
     end
 
@@ -419,8 +418,8 @@ function GUI.handle_click(event)
         return
     end
 
-    if DEBUG_MODE_ENABLED then
-        log_debug("GUI 点击: " .. el_name .. " (ID: " .. unit_number .. ")")
+    if RiftRail.DEBUG_MODE_ENABLED then
+        log_debug("[RiftRail:GUI] 点击: " .. el_name .. " (ID: " .. unit_number .. ")")
     end
 
     -- 配对
@@ -580,8 +579,8 @@ function GUI.handle_close(event)
 
     if element and element.valid and element.name == "rift_rail_main_frame" then
         if log_debug then
-            if DEBUG_MODE_ENABLED then
-                log_debug("GUI: 检测到关闭事件，销毁窗口。")
+            if RiftRail.DEBUG_MODE_ENABLED then
+                log_debug("[RiftRail:GUI] 检测到关闭事件，销毁窗口。")
             end
         end
         element.destroy()

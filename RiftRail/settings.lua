@@ -15,6 +15,16 @@ data:extend({
         -- 本地化键值 (会自动去 strings.cfg 找对应的翻译)
         localised_name = { "mod-setting-name.rift-rail-show-cybersyn-notifications" },
     },
+    -- [新增] Cybersyn 全局提示开关（玩家个性化）
+    {
+        type = "bool-setting",
+        name = "rift-rail-show-cybersyn-global", -- 控制是否看到全局 Cybersyn 提示
+        setting_type = "runtime-per-user",       -- 每个玩家单独设置
+        default_value = true,                     -- 默认开启
+        order = "a-b",                           -- 紧跟通知开关之后
+        localised_name = { "mod-setting-name.rift-rail-show-cybersyn-global" },
+        localised_description = { "mod-setting-description.rift-rail-show-cybersyn-global" },
+    },
     -- 追加在最后一个设置的后面，别忘了逗号
     {
         type = "bool-setting",

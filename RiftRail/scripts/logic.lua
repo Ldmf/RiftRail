@@ -6,7 +6,6 @@ local State = nil
 local GUI = nil
 local CybersynSE = nil -- [新增] 本地变量
 
-local DEBUG_MODE_ENABLED = settings.global["rift-rail-debug-mode"].value
 local log_debug = function() end
 
 function Logic.init(deps)
@@ -41,6 +40,18 @@ local function refresh_all_guis()
             end
         end
     end
+end
+
+-- [新增] 辅助函数：构建包含图标的富文本显示名称
+local function build_display_name(struct)
+    local richtext = ""
+    if struct and struct.icon and struct.icon.type and struct.icon.name then
+        richtext = "[" .. struct.icon.type .. "=" .. struct.icon.name .. "] "
+    end
+    if struct then
+        richtext = richtext .. struct.name
+    end
+    return richtext
 end
 
 -- ============================================================================
@@ -95,7 +106,9 @@ local function update_collider_state(struct)
             position = target_pos, -- 使用相同的坐标
             force = struct.shell.force,
         })
-        -- if DEBUG_MODE_ENABLED then log_debug("Logic: 已在精准坐标 (" .. target_pos.x .. "," .. target_pos.y .. ") 重建碰撞器。") end
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_debug("[RiftRail:Logic] 已在精准坐标 (" .. target_pos.x .. "," .. target_pos.y .. ") 重建碰撞器。")
+        end
     end
 end
 
@@ -235,7 +248,10 @@ function Logic.pair_portals(player_index, source_id, target_id)
     source.paired_to_id = target_id
     target.paired_to_id = source_id
 
-    player.print({ "messages.rift-rail-pair-success", source.name, target.name })
+    -- [修改] 使用富文本显示，支持图标（玩家个人消息，保留本地化）
+    local source_display = build_display_name(source)
+    local target_display = build_display_name(target)
+    player.print({ "messages.rift-rail-pair-success", source_display, target_display })
 
     -- 智能初始化状态
     if source.mode == "entry" then
@@ -272,7 +288,9 @@ function Logic.unpair_portals(player_index, portal_id)
         Logic.set_mode(nil, target.id, "neutral", true)
     end
 
-    player.print({ "messages.rift-rail-unpair-success", target_name })
+    -- [修改] 使用富文本显示，支持图标（玩家个人消息，保留本地化）
+    local target_display = build_display_name(target)
+    player.print({ "messages.rift-rail-unpair-success", target_display })
     refresh_all_guis()
 end
 
