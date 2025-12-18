@@ -106,9 +106,7 @@ local function update_collider_state(struct)
             position = target_pos, -- 使用相同的坐标
             force = struct.shell.force,
         })
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:Logic] 已在精准坐标 (" .. target_pos.x .. "," .. target_pos.y .. ") 重建碰撞器。")
-        end
+        log_debug("[RiftRail:Logic] 已在精准坐标 (" .. target_pos.x .. "," .. target_pos.y .. ") 重建碰撞器。")
     end
 end
 

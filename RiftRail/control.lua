@@ -13,6 +13,9 @@ RiftRail.DEBUG_MODE_ENABLED = settings.global["rift-rail-debug-mode"].value
 
 -- 【修改】定义一个纯粹的、只负责打印的日志函数
 local function log_debug(msg)
+    if not RiftRail.DEBUG_MODE_ENABLED then
+        return
+    end
     log("[RiftRail] " .. msg)
     if game then
         game.print("[RiftRail] " .. msg)
@@ -258,7 +261,7 @@ script.on_event(defines.events.on_entity_cloned, function(event)
                         entity = found_clone[1],
                         relative_pos = old_child_data.relative_pos,
                     })
-                elseif RiftRail.DEBUG_MODE_ENABLED then
+                else
                     log_debug("RiftRail Clone Error: 在位置 " .. serpent.line(expected_pos) .. " 附近未能找到名为 " .. child_name .. " 的子实体克隆体。")
                 end
             end
@@ -283,9 +286,7 @@ script.on_event(defines.events.on_entity_cloned, function(event)
     -- 6. 删除旧数据
     storage.rift_rails[old_unit_number] = nil
 
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_debug("[RiftRail] 克隆迁移成功: ID " .. new_data.id .. " | 实体ID " .. old_unit_number .. " -> " .. new_unit_number)
-    end
+    log_debug("[RiftRail] 克隆迁移成功: ID " .. new_data.id .. " | 实体ID " .. old_unit_number .. " -> " .. new_unit_number)
 end)
 
 -- ============================================================================
@@ -349,9 +350,7 @@ script.on_event(defines.events.on_player_setup_blueprint, function(event)
 
             -- 将改造后的“安装包”加入新列表
             table.insert(new_entities, placer_entity)
-            if RiftRail.DEBUG_MODE_ENABLED then
-                player.print("[RiftRail] 蓝图源头掉包: RiftRail Entity -> Placer")
-            end
+            log_debug("蓝图源头掉包: RiftRail Entity -> Placer")
         elseif not (source_entity and source_entity.valid and source_entity.name:find("rift-rail-")) then
             -- 如果这个实体不是任何 RiftRail 的组件，就把它保留下来
             table.insert(new_entities, bp_entity)
@@ -413,9 +412,7 @@ script.on_event(defines.events.on_entity_settings_pasted, function(event)
         end
 
         -- 6. Debug 信息
-        if RiftRail.DEBUG_MODE_ENABLED then
-            player.print("[RiftRail] 设置已粘贴: " .. source_data.name .. " -> " .. dest_data.name)
-        end
+        log_debug("设置已粘贴: " .. source_data.name .. " -> " .. dest_data.name)
     end
 end)
 -- ============================================================================
@@ -492,11 +489,7 @@ script.on_configuration_changed(function(event)
 
     -- 2. 【迁移】为旧存档构建 id_map 缓存
     if storage.rift_rails and next(storage.rift_rails) ~= nil and next(storage.rift_rail_id_map) == nil then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_debug("[Migration] 检测到旧存档，正在构建 id_map 缓存...")
-            end
-        end
+        log_debug("[Migration] 检测到旧存档，正在构建 id_map 缓存...")
         for unit_number, struct in pairs(storage.rift_rails) do
             storage.rift_rail_id_map[struct.id] = unit_number
         end
@@ -507,11 +500,7 @@ script.on_configuration_changed(function(event)
         for _, struct in pairs(storage.rift_rails) do
             -- 判断是否为需要修复的旧数据：检查第一个 child 是否是实体对象，而不是 table
             if struct.children and #struct.children > 0 and struct.children[1].valid then
-                if RiftRail.DEBUG_MODE_ENABLED then
-                    if RiftRail.DEBUG_MODE_ENABLED then
-                        log_debug("[Migration] 正在修复建筑 ID " .. struct.id .. " 的 children 列表...")
-                    end
-                end
+                log_debug("[Migration] 正在修复建筑 ID " .. struct.id .. " 的 children 列表...")
                 local new_children = {}
                 if struct.shell and struct.shell.valid then
                     local center_pos = struct.shell.position

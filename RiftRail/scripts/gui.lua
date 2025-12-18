@@ -9,14 +9,19 @@ local State = nil
 
 local log_debug = function() end
 
+local function log_gui(message)
+    if not RiftRail.DEBUG_MODE_ENABLED then
+        return
+    end
+    if log_debug then
+        log_debug(message)
+    end
+end
+
 function GUI.init(dependencies)
     State = dependencies.State
     log_debug = dependencies.log_debug
-    if log_debug then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:GUI] 模块初始化完成 (Relative Mode)。")
-        end
-    end
+    log_gui("[RiftRail:GUI] 模块初始化完成 (Relative Mode)。")
 end
 
 -- =================================================================================
@@ -89,9 +94,7 @@ function GUI.build_or_update(player, entity)
     -- 1. 获取数据
     local my_data = State.get_struct(entity)
     if not my_data then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:GUI] 错误: 无法找到实体关联的数据。")
-        end
+        log_gui("[RiftRail:GUI] 错误: 无法找到实体关联的数据。")
         return
     end
 
@@ -135,11 +138,7 @@ function GUI.build_or_update(player, entity)
         " (ID: " .. my_data.id .. ")", -- 后面拼接 ID
     }
 
-    if log_debug then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:GUI] 标题已更新为本地化名称 (ID: " .. my_data.id .. ")")
-        end
-    end
+    log_gui("[RiftRail:GUI] 标题已更新为本地化名称 (ID: " .. my_data.id .. ")")
 
     local frame = gui.add({
         type = "frame",
@@ -158,11 +157,7 @@ function GUI.build_or_update(player, entity)
     -- 这会自动关闭原本的箱子界面！
     player.opened = frame
 
-    if log_debug then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:GUI] 已创建独立窗口并接管 player.opened")
-        end
-    end
+    log_gui("[RiftRail:GUI] 已创建独立窗口并接管 player.opened")
 
     local inner_flow = frame.add({ type = "flow", direction = "vertical" })
     inner_flow.style.padding = 8
@@ -418,9 +413,7 @@ function GUI.handle_click(event)
         return
     end
 
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_debug("[RiftRail:GUI] 点击: " .. el_name .. " (ID: " .. unit_number .. ")")
-    end
+    log_gui("[RiftRail:GUI] 点击: " .. el_name .. " (ID: " .. unit_number .. ")")
 
     -- 配对
     if el_name == "rift_rail_pair_button" then
@@ -578,11 +571,7 @@ function GUI.handle_close(event)
     local element = event.element
 
     if element and element.valid and element.name == "rift_rail_main_frame" then
-        if log_debug then
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_debug("[RiftRail:GUI] 检测到关闭事件，销毁窗口。")
-            end
-        end
+        log_gui("[RiftRail:GUI] 检测到关闭事件，销毁窗口。")
         element.destroy()
     end
 end

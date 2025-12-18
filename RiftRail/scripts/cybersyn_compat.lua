@@ -8,6 +8,15 @@ local State = nil
 
 local log_debug = function() end
 
+local function log_cs(message)
+    if not RiftRail.DEBUG_MODE_ENABLED then
+        return
+    end
+    if log_debug then
+        log_debug(message)
+    end
+end
+
 -- [适配] 对应 gui.lua 中的开关名称
 CybersynSE.BUTTON_NAME = "rift_rail_cybersyn_switch"
 
@@ -38,9 +47,7 @@ function CybersynSE.init(dependencies)
 
     -- [修改] 这里不再进行检测！只做依赖注入。
     -- 因为此时 Cybersyn 可能还没注册接口。
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_debug("[RiftRail:CybersynCompat] 模块已加载 (等待运行时检测接口)。")
-    end
+    log_cs("[RiftRail:CybersynCompat] 模块已加载 (等待运行时检测接口)。")
 end
 
 -- 用于生成 Cybersyn 数据库键值的排序函数
@@ -170,9 +177,7 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
                 remote.call("cybersyn", "write_global", { [entity_pair_key] = connection_data }, "connected_surfaces", surface_pair_key)
             end
 
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_debug("[RiftRail:CybersynCompat] [连接] " .. portal_struct.name .. " <--> " .. opposite_struct.name)
-            end
+            log_cs("[RiftRail:CybersynCompat] [连接] " .. portal_struct.name .. " <--> " .. opposite_struct.name)
             success = true
         else
             -- 断开连接：清理数据
@@ -182,9 +187,7 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
             -- 清理 SE 表 (保持不变)
             remote.call("cybersyn", "write_global", nil, "se_elevators", station1.unit_number)
             remote.call("cybersyn", "write_global", nil, "se_elevators", station2.unit_number)
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_debug("[RiftRail:CybersynCompat] [断开] 连接清理完毕。")
-            end
+            log_cs("[RiftRail:CybersynCompat] [断开] 连接清理完毕。")
             success = true
         end
     end)
@@ -272,17 +275,13 @@ function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
 
     if is_landing then
         -- 降落：静默处理，保持 enabled=true，但不发送通知，隐身模式
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:CybersynCompat] 飞船降落，维持连接状态 (静默)。")
-        end
+        log_cs("[RiftRail:CybersynCompat] 飞船降落，维持连接状态 (静默)。")
         new_struct.cybersyn_enabled = true
         -- 这里什么都不做，不向 Cybersyn 注册，仅仅保留开关状态
     else
         -- 起飞或搬家：注册新 ID
         CybersynSE.update_connection(new_struct, partner, true, nil)
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:CybersynCompat] 实体迁移，重新注册连接。")
-        end
+        log_cs("[RiftRail:CybersynCompat] 实体迁移，重新注册连接。")
 
         if string.find(new_struct.surface.name, "spaceship") then
             is_takeoff = true

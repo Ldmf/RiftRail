@@ -153,6 +153,53 @@ local function get_real_station_name(struct)
     return struct.name
 end
 
+-- [新增] 记录/恢复正在查看列车 GUI 的玩家列表（兼容 train 和 entity 打开方式）
+local function collect_gui_watchers(train_id)
+    local res = {}
+    if not train_id then
+        return res
+    end
+    for _, p in pairs(game.players) do
+        if p and p.valid then
+            local opened = p.opened
+            if opened then
+                local gt = p.opened_gui_type
+                if gt == defines.gui_type.train or gt == defines.gui_type.entity then
+                    local typ = opened.object_name
+                    local watching = (typ == "LuaTrain" and opened.id == train_id)
+                        or (typ == "LuaEntity" and opened.train and opened.train.id == train_id)
+                    if watching then
+                        res[#res + 1] = p.index
+                    end
+                end
+            end
+        end
+    end
+    return res
+end
+
+local function reopen_train_gui(watchers, train)
+    if not watchers or #watchers == 0 then
+        return 0
+    end
+    if not (train and train.valid) then
+        return 0
+    end
+    local stock = train.front_stock or train.back_stock
+    if not (stock and stock.valid) then
+        return 0
+    end
+    local count = 0
+    for _, idx in ipairs(watchers) do
+        local player = game.players[idx]
+        if player and player.valid then
+            player.opened = stock
+            count = count + 1
+        end
+    end
+    return count
+end
+
 -- [新增] 辅助函数：判断车厢在列车中的连接方向 (照搬 SE)
 -- 返回 1 (正接) 或 -1 (反接)
 local function get_train_forward_sign(carriage_a)
@@ -186,22 +233,16 @@ function Teleport.init_se_events()
     -- [关键修复] 确保 on_load 时也能拿到最新的日志函数
     -- if injected_log_debug then log_debug = injected_log_debug end
     if script.active_mods["space-exploration"] and remote.interfaces["space-exploration"] then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("Teleport: 正在尝试从 SE 获取传送事件 ID (on_load)...")
-        end
+        log_tp("Teleport: 正在尝试从 SE 获取传送事件 ID (on_load)...")
         local success, event_started = pcall(remote.call, "space-exploration", "get_on_train_teleport_started_event")
         local _, event_finished = pcall(remote.call, "space-exploration", "get_on_train_teleport_finished_event")
 
         if success and event_started then
             SE_TELEPORT_STARTED_EVENT_ID = event_started
             SE_TELEPORT_FINISHED_EVENT_ID = event_finished
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_tp("Teleport: SE 传送事件 ID 获取成功！")
-            end
+            log_tp("Teleport: SE 传送事件 ID 获取成功！")
         else
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_tp("Teleport: 警告 - 无法从 SE 获取传送事件 ID。")
-            end
+            log_tp("Teleport: 警告 - 无法从 SE 获取传送事件 ID。")
         end
     end
 end
@@ -279,9 +320,7 @@ end
 
 -- 结束传送：清理状态，恢复数据
 local function finish_teleport(entry_struct, exit_struct)
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_tp("传送结束: 清理状态 (入口ID: " .. entry_struct.id .. ", 出口ID: " .. exit_struct.id .. ")")
-    end
+    log_tp("传送结束: 清理状态 (入口ID: " .. entry_struct.id .. ", 出口ID: " .. exit_struct.id .. ")")
 
     -- 1. 销毁最后的拖船 (带时刻表保护)
     if exit_struct.tug and exit_struct.tug.valid then
@@ -362,13 +401,9 @@ local function finish_teleport(entry_struct, exit_struct)
         -- 4. SE 事件触发 (Finished)
         if SE_TELEPORT_FINISHED_EVENT_ID and exit_struct.old_train_id then
             -- >>>>> [新增调试日志] >>>>>
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_tp("【DEBUG】准备触发 FINISHED 事件: new_train_id = " .. tostring(final_train.id) .. ", old_train_id = " .. tostring(exit_struct.old_train_id))
-            end
+            log_tp("【DEBUG】准备触发 FINISHED 事件: new_train_id = " .. tostring(final_train.id) .. ", old_train_id = " .. tostring(exit_struct.old_train_id))
             -- <<<<< [新增结束] <<<<<
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_tp("SE 兼容: 触发 on_train_teleport_finished")
-            end
+            log_tp("SE 兼容: 触发 on_train_teleport_finished")
             script.raise_event(SE_TELEPORT_FINISHED_EVENT_ID, {
                 train = final_train,
                 old_train_id = exit_struct.old_train_id,
@@ -377,6 +412,11 @@ local function finish_teleport(entry_struct, exit_struct)
                 teleporter = exit_struct.shell,
             })
         end
+
+        -- [新增] 恢复被记录的 GUI 观察者到最终列车
+        local restored = reopen_train_gui(exit_struct.gui_watchers, final_train)
+        exit_struct.gui_watchers = nil
+        log_tp("恢复 GUI 观察者: " .. tostring(restored) .. " 人, final_train_id=" .. tostring(final_train.id))
     end
 
     -- 5. 重置状态变量
@@ -408,9 +448,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
     -- 安全检查 (保持不变)
     if not (exit_struct and exit_struct.shell and exit_struct.shell.valid) then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("错误: 出口失效，传送中断。")
-        end
+        log_tp("错误: 出口失效，传送中断。")
         finish_teleport(entry_struct, entry_struct) -- 自身清理
         return
     end
@@ -418,9 +456,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     -- 检查入口车厢
     local carriage = entry_struct.carriage_behind
     if not (carriage and carriage.valid) then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("入口车厢失效或丢失，结束传送。")
-        end
+        log_tp("入口车厢失效或丢失，结束传送。")
         finish_teleport(entry_struct, exit_struct)
         return
     end
@@ -471,9 +507,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
     -- 堵塞处理 (SE 方案 - API 调用完全修正版)
     if not is_clear then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("出口堵塞，暂停传送...")
-        end
+        log_tp("出口堵塞，暂停传送...")
         if carriage.train and not carriage.train.manual_mode then
             local sched = carriage.train.get_schedule()
             if not sched then
@@ -511,9 +545,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
                 carriage.train.go_to_station(sched.current + 1)
 
-                if RiftRail.DEBUG_MODE_ENABLED then
-                    log_tp("API 调用正确：已插入临时路障站点。")
-                end
+                log_tp("API 调用正确：已插入临时路障站点。")
             end
         end
         return
@@ -534,8 +566,12 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     end
 
     -- 开始传送当前车厢
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_tp("正在传送车厢: " .. carriage.name)
+    log_tp("正在传送车厢: " .. carriage.name)
+
+    -- [新增] 第一节车时记录正在查看该列车 GUI 的玩家
+    if is_first_carriage and carriage.train then
+        exit_struct.gui_watchers = collect_gui_watchers(carriage.train.id)
+        log_tp("记录 GUI 观察者: " .. tostring(#exit_struct.gui_watchers) .. " 人, old_train_id=" .. tostring(carriage.train.id))
     end
 
     -- 获取下一节车 (用于更新循环)
@@ -574,9 +610,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         -- [SE] Started 事件
         if SE_TELEPORT_STARTED_EVENT_ID then
             -- >>>>> [新增调试日志] >>>>>
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_tp("【DEBUG】准备触发 STARTED 事件: old_train_id = " .. tostring(carriage.train.id))
-            end
+            log_tp("【DEBUG】准备触发 STARTED 事件: old_train_id = " .. tostring(carriage.train.id))
             -- <<<<< [新增结束] <<<<<
             script.raise_event(SE_TELEPORT_STARTED_EVENT_ID, {
                 train = carriage.train,
@@ -619,9 +653,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     end
     local is_nose_in = diff < 0.125
 
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_tp("方向计算: 车厢ori=" .. carriage_ori .. ", 建筑ori=" .. entry_shell_ori .. ", 判定=" .. (is_nose_in and "顺向" or "逆向"))
-    end
+    log_tp("方向计算: 车厢ori=" .. carriage_ori .. ", 建筑ori=" .. entry_shell_ori .. ", 判定=" .. (is_nose_in and "顺向" or "逆向"))
 
     -- >>>>> [修改] 1. 提前计算目标朝向 (target_ori) >>>>>
     local exit_base_ori = geo.direction / 16.0
@@ -630,13 +662,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     if not is_nose_in then
         -- 逆向进入 -> 逆向离开 (翻转 180 度)
         target_ori = (target_ori + 0.5) % 1.0
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("方向计算: 逆向翻转 (Ori " .. exit_base_ori .. " -> " .. target_ori .. ")")
-        end
+        log_tp("方向计算: 逆向翻转 (Ori " .. exit_base_ori .. " -> " .. target_ori .. ")")
     else
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("方向计算: 顺向保持 (Ori " .. target_ori .. ")")
-        end
+        log_tp("方向计算: 顺向保持 (Ori " .. target_ori .. ")")
     end
     -- <<<<< [修改结束] <<<<<
 
@@ -646,9 +674,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
     if exit_struct.shell.direction == 0 and not entry_struct.carriage_ahead and carriage.type == "locomotive" and is_facing_dead_end then
         spawn_pos.y = spawn_pos.y + 2 -- 往出口方向(南)挪2格
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("几何修正: 检测到车头面朝死胡同，已向外偏移生成坐标以容纳拖车。")
-        end
+        log_tp("几何修正: 检测到车头面朝死胡同，已向外偏移生成坐标以容纳拖车。")
     end
     -- <<<<< [修改结束] <<<<<
 
@@ -666,9 +692,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     })
 
     if not new_carriage then
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("严重错误: 无法在出口创建车厢！")
-        end
+        log_tp("严重错误: 无法在出口创建车厢！")
         finish_teleport(entry_struct, exit_struct)
         return
     end
@@ -714,9 +738,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     if not entry_struct.carriage_ahead then
         -- 1. 获取带图标的真实站名 (解决比对失败问题)
         local real_station_name = get_real_station_name(entry_struct)
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("时刻表转移: 使用真实站名 '" .. real_station_name .. "' 进行比对")
-        end
+        log_tp("时刻表转移: 使用真实站名 '" .. real_station_name .. "' 进行比对")
 
         -- 2. 转移时刻表
         Schedule.transfer_schedule(carriage.train, new_carriage.train, real_station_name)
@@ -755,9 +777,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         if tug then
             tug.destructible = false
             exit_struct.tug = tug
-            if RiftRail.DEBUG_MODE_ENABLED then
-                log_tp("拖船已创建，等待物理吸附或速度管理器接管。")
-            end
+            log_tp("拖船已创建，等待物理吸附或速度管理器接管。")
         end
 
         -- >>>>> [新增逻辑] 立即恢复出口火车的状态 (模仿 SE) >>>>>
@@ -774,9 +794,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         end
         -- <<<<< [新增结束] <<<<<
     else
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("最后一节车厢传送完毕。")
-        end
+        log_tp("最后一节车厢传送完毕。")
         finish_teleport(entry_struct, exit_struct)
     end
 end
@@ -853,9 +871,7 @@ function Teleport.on_collider_died(event)
         struct.collider_needs_rebuild = true
     else
         -- 情况 B: 有火车，触发传送逻辑
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("触发传送！入口ID: " .. struct.id .. " 火车ID: " .. train.id)
-        end
+        log_tp("触发传送！入口ID: " .. struct.id .. " 火车ID: " .. train.id)
 
         -- [修改] 优先用撞击者作为第一节
         struct.carriage_behind = event.cause or train.front_stock
@@ -1004,9 +1020,7 @@ function Teleport.on_tick(event)
                         local exit_struct = State.get_struct_by_id(struct.paired_to_id)
                         Teleport.teleport_next(struct, exit_struct)
                     else
-                        if RiftRail.DEBUG_MODE_ENABLED then
-                            log_tp("传送序列正常结束，关闭状态。")
-                        end
+                        log_tp("传送序列正常结束，关闭状态。")
                         struct.is_teleporting = false
                     end
                 end

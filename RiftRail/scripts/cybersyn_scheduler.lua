@@ -160,9 +160,7 @@ local function process_train(train)
         return
     end -- 同地表任务，无需处理
 
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_debug("[RiftRail:CybersynScheduler] >>> 检测到跨地表任务，开始注入时刻表 <<<")
-    end
+    log_debug("[RiftRail:CybersynScheduler] >>> 检测到跨地表任务，开始注入时刻表 <<<")
 
     local current_train_surface = train.front_stock.surface.index
     local new_records = {}
@@ -227,9 +225,7 @@ local function process_train(train)
             remote.call("cybersyn", "write_global", c_train.depot_id, "trains", train.id, "depot_id")
         end
 
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_debug("[RiftRail:CybersynScheduler] 时刻表注入完成。")
-        end
+        log_debug("[RiftRail:CybersynScheduler] 时刻表注入完成。")
         -- [已移除] 警报清除代码 (因为 Cybersyn 官方已修复)
     end
 end
