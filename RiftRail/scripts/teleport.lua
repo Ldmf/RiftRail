@@ -323,13 +323,18 @@ local function finish_teleport(entry_struct, exit_struct)
     log_tp("传送结束: 清理状态 (入口ID: " .. entry_struct.id .. ", 出口ID: " .. exit_struct.id .. ")")
 
     -- 1. 销毁最后的拖船 (带时刻表保护)
+    local exit_train_speed_before_tug_death = nil
     if exit_struct.tug and exit_struct.tug.valid then
-        -- [A] 存: 销毁拖船会导致时刻表重置，先保存当前索引
+        -- [A] 存: 销毁拖船会导致时刻表重置，先保存当前索引和速度
         local saved_index_before_tug_death = nil
         -- 尝试通过 carriage_ahead 获取火车
         local train_ref = exit_struct.carriage_ahead and exit_struct.carriage_ahead.valid and exit_struct.carriage_ahead.train
-        if train_ref and train_ref.valid and train_ref.schedule then
-            saved_index_before_tug_death = train_ref.schedule.current
+        if train_ref and train_ref.valid then
+            if train_ref.schedule then
+                saved_index_before_tug_death = train_ref.schedule.current
+            end
+            -- [关键] 保存出口列车当前的实际速度（传送过程中已加速到的高速）
+            exit_train_speed_before_tug_death = train_ref.speed
         end
 
         -- [B] 炸
@@ -357,8 +362,9 @@ local function finish_teleport(entry_struct, exit_struct)
         final_train.manual_mode = exit_struct.saved_manual_mode or false
         -- <<<<< [修复结束] <<<<<
 
-        -- 2. 恢复速度（确定性）：保留原始符号，不设置最小地板，不试探反向
-        local restored_speed = exit_struct.saved_speed or 0
+        -- 2. 恢复速度：优先使用最后保存的出口实际速度，其次拖船销毁前速度，最后才用入口速度
+        -- 这样可以保持传送过程中获得的动量，避免结束时骤降
+        local restored_speed = exit_struct.final_train_speed or exit_train_speed_before_tug_death or exit_struct.saved_speed or 0
         final_train.speed = restored_speed
 
         -- >>>>> [新增] 数据恢复 (注入灵魂) >>>>>
@@ -759,6 +765,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         -- <<<<< [新增结束] <<<<<
     else
         log_tp("最后一节车厢传送完毕。")
+        -- 最后一节车传完时不再更新速度（此时为0），直接使用之前保存的高速
         finish_teleport(entry_struct, exit_struct)
     end
 end
@@ -908,6 +915,10 @@ function Teleport.manage_speed(struct)
                     train_exit.speed = target_speed * required_sign
                 end
             end
+            
+            -- [关键修复] 在速度管理过程中持续保存出口列车速度
+            -- 这样传送结束时使用的就是被维持的高速，而不是刚生成时的 0 速度
+            exit_struct.final_train_speed = train_exit.speed
 
             -- 3. [终极修正] 太空电梯三方符号算法 (保持不变)
             local dir = struct.shell.direction
