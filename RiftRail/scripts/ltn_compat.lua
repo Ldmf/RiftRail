@@ -158,6 +158,22 @@ local function add_station_to_schedule(train, station_entity, insert_index)
     if not schedule then
         return
     end
+    -- 防重：若目标站名已在时刻表中，则不再重复插入
+    local station_name = station_entity.backer_name
+    if station_name and schedule.get_record then
+        -- 简单线性扫描当前日程，若存在同名站点则跳过插入
+        -- 说明：Factorio 2.0 的 TrainSchedule 提供 get_record 接口，但未暴露枚举器；
+        --       这里保守地从 1 开始尝试读取，遇到 nil 则停止。
+        local i = 1
+        while true do
+            local rec = schedule.get_record({ schedule_index = i })
+            if not rec then break end
+            if rec.station == station_name then
+                return
+            end
+            i = i + 1
+        end
+    end
     schedule.add_record({
         station = station_entity.backer_name,
         index = { schedule_index = insert_index },
@@ -214,6 +230,14 @@ function LTN.on_dispatcher_updated(e)
             goto continue
         end
 
+        -- 防重键：基于 train_id + from_id + to_id，避免异常重复触发导致的再次插入
+        storage.ltn_handled_keys = storage.ltn_handled_keys or {}
+        local key = string.format("%s:%s:%s", tostring(train.id), tostring(d.from_id or 0), tostring(d.to_id or 0))
+        if storage.ltn_handled_keys[key] then
+            ltn_log("[LTNCompat] 跳过重复处理: key=" .. key)
+            goto continue
+        end
+
         -- 计算 provider/requester 索引
         local p_index, _, p_type = remote.call("logistic-train-network", "get_next_logistic_stop", train)
         local r_index, r_type
@@ -258,6 +282,9 @@ function LTN.on_dispatcher_updated(e)
                 break
             end
         end
+
+        -- 标记此交付已处理，防止重复插入
+        storage.ltn_handled_keys[key] = true
 
         ::continue::
     end

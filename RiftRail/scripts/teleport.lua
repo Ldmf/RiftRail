@@ -721,8 +721,14 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         -- 3. 保存新火车的时刻表索引 (解决重置问题)
         -- transfer_schedule 内部已经调用了 go_to_station，所以现在的 current 是正确的下一站
 
-        -- [LTN] 无 SE 时执行重指派与临时站插入，保持交付不中断
-        if (not script.active_mods["space-exploration"]) and remote.interfaces["logistic-train-network"] and exit_struct.old_train_id then
+        -- [LTN] 在以下任一条件下执行本地重指派与临时站插入：
+        --   1) 未安装 SE；或
+        --   2) 安装了 SE 但未安装 se-ltn-glue（无第三方接管时需要我们兜底）。
+        local need_local_ltn_reassign = remote.interfaces["logistic-train-network"]
+            and exit_struct.old_train_id
+            and (not script.active_mods["space-exploration"] or (script.active_mods["space-exploration"] and not script.active_mods["se-ltn-glue"]))
+
+        if need_local_ltn_reassign then
             local ok, has_delivery = pcall(remote.call, "logistic-train-network", "reassign_delivery", exit_struct.old_train_id, new_carriage.train)
             if ok and has_delivery then
                 local insert_index = remote.call("logistic-train-network", "get_or_create_next_temp_stop", new_carriage.train)
@@ -732,7 +738,7 @@ function Teleport.teleport_next(entry_struct, exit_struct)
                         sched.go_to_station(insert_index)
                     end
                 end
-                log_tp("LTN兼容: 已重指派交付并插入临时站。")
+                log_tp("LTN兼容: 已重指派交付并插入临时站（本地兜底）。")
             end
         end
     end
