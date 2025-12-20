@@ -5,6 +5,7 @@ local Logic = {}
 local State = nil
 local GUI = nil
 local CybersynSE = nil -- [新增] 本地变量
+local LTN = nil -- [新增] LTN 兼容
 
 local log_debug = function() end
 
@@ -13,6 +14,7 @@ function Logic.init(deps)
     GUI = deps.GUI
     log_debug = deps.log_debug
     CybersynSE = deps.CybersynSE -- [新增] 获取依赖
+    LTN = deps.LTN -- [新增]
 end
 
 -- ============================================================================
@@ -345,6 +347,34 @@ function Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
     end
 
     -- 刷新界面
+    refresh_all_guis()
+end
+
+-- ============================================================================
+-- 7. LTN 开关控制
+-- ==========================================================================
+function Logic.set_ltn_enabled(player_index, portal_id, enabled)
+    local player = game.get_player(player_index)
+    local my_data = State.get_struct_by_id(portal_id)
+    if not (player and my_data) then
+        return
+    end
+
+    local partner = nil
+    if my_data.paired_to_id then
+        partner = State.get_struct_by_id(my_data.paired_to_id)
+    end
+    if not partner then
+        player.print({ "messages.rift-rail-error-ltn-unpaired" })
+        return
+    end
+
+    if LTN then
+        LTN.update_connection(my_data, partner, enabled, player)
+    else
+        my_data.ltn_enabled = enabled
+    end
+
     refresh_all_guis()
 end
 

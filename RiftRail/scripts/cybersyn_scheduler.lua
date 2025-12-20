@@ -17,7 +17,27 @@ if script.active_mods["space-exploration"] then
     return CybersynScheduler
 end
 
+-- 如果没有 Cybersyn，就提前返回，不注册任何事件，避免无意义的远程调用
+local CYBERSYN_PRESENT = remote.interfaces["cybersyn"] and remote.interfaces["cybersyn"]["write_global"]
+if not CYBERSYN_PRESENT then
+    return CybersynScheduler
+end
+
 local pending_trains = {}
+
+-- 快速检查：是否有任何开启了 Cybersyn 的传送门，避免高频事件下做无谓查询
+local function has_enabled_portal()
+    local portals = storage.rift_rails
+    if not portals then
+        return false
+    end
+    for _, portal in pairs(portals) do
+        if portal.cybersyn_enabled then
+            return true
+        end
+    end
+    return false
+end
 
 -- 辅助：从组件中获取车站实体
 local function get_station(struct)
@@ -120,6 +140,11 @@ end
 -- 处理单列火车
 local function process_train(train)
     if not (train and train.valid and train.schedule and train.schedule.records) then
+        return
+    end
+
+    -- 如果当前没有任何开启 Cybersyn 的传送门，则跳过本次处理
+    if not has_enabled_portal() then
         return
     end
 
@@ -246,6 +271,10 @@ end
 -- 事件监听：捕获时刻表变更
 script.on_event(defines.events.on_train_schedule_changed, function(event)
     if event.train and event.train.valid and not event.player_index then
+        -- 没有开启的传送门时，无需介入
+        if not has_enabled_portal() then
+            return
+        end
         -- 只有在 Cybersyn 生成了标准时刻表 (至少2站: P和R) 时才介入
         if event.train.schedule and #event.train.schedule.records >= 2 then
             pending_trains[event.train.id] = event.train

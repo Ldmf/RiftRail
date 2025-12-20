@@ -208,7 +208,7 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
             end
             return richtext
         end
-        
+
         local portal_display = build_display_name(portal_struct)
         -- 仅对开启选项的玩家推送提示（默认开启，可单独关闭）
         for _, player in pairs(game.connected_players) do

@@ -33,6 +33,7 @@ local Util = require("scripts.util")
 local Teleport = require("scripts.teleport")
 local CybersynSE = require("scripts.cybersyn_compat") -- [新增] 加载兼容模块
 local CybersynScheduler = require("scripts.cybersyn_scheduler") -- [新增]
+local LTN = require("scripts.ltn_compat") -- [新增] LTN 兼容模块
 
 -- [修改] 给 Builder 注入 CybersynSE (用于拆除清理)
 if Builder.init then
@@ -47,6 +48,14 @@ end
 -- [新增] 初始化 Cybersyn 模块
 if CybersynSE.init then
     CybersynSE.init({
+        State = State,
+        log_debug = log_debug,
+    })
+end
+
+-- [新增] 初始化 LTN 模块（仅依赖注入，实际接口运行时检查）
+if LTN.init then
+    LTN.init({
         State = State,
         log_debug = log_debug,
     })
@@ -77,6 +86,7 @@ if Logic.init then
         GUI = GUI,
         log_debug = log_debug,
         CybersynSE = CybersynSE, -- [新增] 正式注入
+        LTN = LTN, -- [新增] 注入 LTN 兼容
     })
 end
 
@@ -170,6 +180,27 @@ script.on_event(defines.events.on_tick, function(event)
         CybersynScheduler.on_tick()
     end
 end)
+
+-- E. 注册 LTN 事件（在运行时可用时）
+local function register_ltn_events()
+    if remote.interfaces["logistic-train-network"] then
+        local ok1, ev1 = pcall(remote.call, "logistic-train-network", "on_stops_updated")
+        if ok1 and ev1 then
+            script.on_event(ev1, function(e)
+                if LTN and LTN.on_stops_updated then LTN.on_stops_updated(e) end
+            end)
+            log_debug("[LTN] 已注册 on_stops_updated 事件")
+        end
+
+        local ok2, ev2 = pcall(remote.call, "logistic-train-network", "on_dispatcher_updated")
+        if ok2 and ev2 then
+            script.on_event(ev2, function(e)
+                if LTN and LTN.on_dispatcher_updated then LTN.on_dispatcher_updated(e) end
+            end)
+            log_debug("[LTN] 已注册 on_dispatcher_updated 事件")
+        end
+    end
+end
 
 -- ============================================================================
 -- 6. GUI 事件 (保持不变)
@@ -480,6 +511,8 @@ script.on_init(function()
     State.ensure_storage() -- 会创建空的 rift_rails 和 id_map
     storage.collider_map = {}
     storage.active_teleporter_list = {}
+    -- 注册 LTN 事件（若可用）
+    register_ltn_events()
 end)
 
 -- on_configuration_changed: 处理模组更新或配置变更
@@ -541,6 +574,7 @@ script.on_load(function(event)
     if Teleport.init_se_events then
         Teleport.init_se_events()
     end
+    register_ltn_events()
 end)
 -- ============================================================================
 -- 7. 远程接口
@@ -565,6 +599,10 @@ remote.add_interface("RiftRail", {
     set_cybersyn_enabled = function(player_index, portal_id, enabled)
         -- [修改] 连接到 Logic 模块
         Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
+    end,
+
+    set_ltn_enabled = function(player_index, portal_id, enabled)
+        Logic.set_ltn_enabled(player_index, portal_id, enabled)
     end,
 
     -- [修改] 玩家传送逻辑：传送到当前建筑外部，而非配对目标

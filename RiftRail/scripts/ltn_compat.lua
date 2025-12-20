@@ -1,0 +1,266 @@
+-- scripts/ltn_compat.lua
+-- 【Rift Rail - LTN 兼容模块】
+-- 作用：在玩家开启 LTN 跨面开关时，向 LTN 注册/撤销跨地表连接；
+--       仅做“连接关系”的维护，实际列车传送由 RiftRail 自身完成。
+
+local LTN = {}
+local State = nil
+local log_debug = function() end
+
+-- 日志：遵循全局调试开关（不再绕过）
+local function ltn_log(msg)
+    if RiftRail and RiftRail.DEBUG_MODE_ENABLED then
+        if log_debug then
+            log_debug("[LTN] " .. msg)
+        else
+            log("[RiftRail:LTN] " .. msg)
+            if game then
+                game.print("[RiftRail:LTN] " .. msg)
+            end
+        end
+    end
+end
+
+LTN.BUTTON_NAME = "rift_rail_ltn_switch" -- GUI按钮名
+
+local function is_ltn_active()
+    return remote.interfaces["logistic-train-network"] ~= nil
+end
+
+-- 计算稳定的 network_id：使用较小的 unit_number，或使用配对 id
+local function compute_network_id(a, b, override)
+    if type(override) == "number" then
+        return override
+    end
+    local ua = a.unit_number or 0
+    local ub = b.unit_number or 0
+    if ua > 0 and ub > 0 then
+        return math.min(ua, ub)
+    end
+    return (a.id or 0)
+end
+
+-- 从 RiftRail 结构体提取内部站实体
+local function get_station(struct)
+    if struct.children then
+        for _, child_data in pairs(struct.children) do
+            local child = child_data.entity
+            if child and child.valid and child.name == "rift-rail-station" then
+                return child
+            end
+        end
+    end
+    return nil
+end
+
+function LTN.init(dependencies)
+    State = dependencies.State
+    if dependencies.log_debug then
+        log_debug = dependencies.log_debug
+    end
+    ltn_log("[LTNCompat] 模块已加载 (运行时检测 LTN 接口)。")
+end
+
+-- 切换连接状态
+function LTN.update_connection(portal_struct, opposite_struct, connect, player)
+    if not is_ltn_active() then
+        if player then
+            player.print({ "messages.rift-rail-error-ltn-not-found" })
+        end
+        return
+    end
+
+    local station1 = get_station(portal_struct)
+    local station2 = get_station(opposite_struct)
+    if not (station1 and station1.valid and station2 and station2.valid) then
+        if player then
+            player.print({ "messages.rift-rail-error-ltn-no-station" })
+        end
+        return
+    end
+
+    local ok, err = pcall(function()
+        if connect then
+            local nid = compute_network_id(station1, station2, tonumber(portal_struct.ltn_network_id) or -1)
+            remote.call("logistic-train-network", "connect_surfaces", station1, station2, nid)
+            ltn_log("[LTNCompat] 已建立跨面连接 network_id=" .. nid)
+        else
+            remote.call("logistic-train-network", "disconnect_surfaces", station1, station2)
+            ltn_log("[LTNCompat] 已断开跨面连接")
+        end
+    end)
+    if not ok then
+        ltn_log("[LTNCompat] 调用失败: " .. tostring(err))
+        if player then
+            player.print("LTN调用失败:" .. tostring(err))
+        end
+        return
+    end
+
+    portal_struct.ltn_enabled = connect
+    opposite_struct.ltn_enabled = connect
+
+    -- 全局提示（可由玩家设置开关控制）
+    local name = portal_struct.name or "RiftRail"
+    for _, p in pairs(game.connected_players) do
+        local setting = settings.get_player_settings(p)["rift-rail-show-ltn-global"]
+        if setting and setting.value then
+            if connect then
+                p.print({ "messages.rift-rail-info-ltn-connected", name })
+            else
+                p.print({ "messages.rift-rail-info-ltn-disconnected", name })
+            end
+        end
+    end
+end
+
+function LTN.on_portal_destroyed(portal_struct)
+    if not is_ltn_active() then
+        return
+    end
+    if portal_struct and portal_struct.ltn_enabled then
+        local opp = State.get_struct_by_id(portal_struct.paired_to_id)
+        if opp then
+            LTN.update_connection(portal_struct, opp, false, nil)
+        else
+            -- 无对端时无需显式断开，LTN在实体删除时不要求调用
+            ltn_log("[LTNCompat] 仅标记断开，无需显式清理")
+        end
+    end
+end
+
+-- =====================================================================================
+-- 事件处理：缓存 stops 与在调度完成后插入中转站
+-- =====================================================================================
+
+-- 选择匹配目标地表的裂隙站
+local function pick_station_for_surface(conn, surface)
+    if not conn then
+        return nil
+    end
+    local e1 = conn.entity1
+    local e2 = conn.entity2
+    if e1 and e1.valid and e1.surface == surface then
+        return e1
+    end
+    if e2 and e2.valid and e2.surface == surface then
+        return e2
+    end
+    return nil
+end
+
+-- 将指定站点名称插入到列车时刻表
+local function add_station_to_schedule(train, station_entity, insert_index)
+    if not (train and train.valid and station_entity and station_entity.valid) then
+        return
+    end
+    local schedule = train.get_schedule()
+    if not schedule then
+        return
+    end
+    schedule.add_record({
+        station = station_entity.backer_name,
+        index = { schedule_index = insert_index },
+    })
+    if schedule.current > insert_index then
+        schedule.go_to_station(insert_index)
+    end
+end
+
+function LTN.on_stops_updated(e)
+    -- e.logistic_train_stops: map[id] = { entity = stop-entity, ... }
+    storage.ltn_stops = e.logistic_train_stops or {}
+end
+
+function LTN.on_dispatcher_updated(e)
+    if not is_ltn_active() then
+        return
+    end
+    local deliveries = e.deliveries
+    local stops = storage.ltn_stops or {}
+
+    for _, train_id in pairs(e.new_deliveries or {}) do
+        local d = deliveries and deliveries[train_id]
+        if not d then
+            goto continue
+        end
+
+        local train = d.train
+        if not (train and train.valid) then
+            goto continue
+        end
+
+        -- 仅处理跨地表的交付
+        local from_stop_data = d.from_id and stops[d.from_id]
+        local to_stop_data = d.to_id and stops[d.to_id]
+        local from_entity = from_stop_data and from_stop_data.entity
+        local to_entity = to_stop_data and to_stop_data.entity
+        if not (from_entity and from_entity.valid and to_entity and to_entity.valid) then
+            goto continue
+        end
+
+        local loco = train.locomotives and train.locomotives.front_movers and train.locomotives.front_movers[1]
+        if loco and loco.valid then
+            -- 检查是否跨面
+            local cross_surface = (from_entity.surface ~= to_entity.surface) or (loco.surface ~= from_entity.surface)
+            if not cross_surface then
+                goto continue
+            end
+        end
+
+        -- 找到当前交付关联的裂隙连接（由我们在 update_connection 中注册）
+        local conns = d.surface_connections or {}
+        if not next(conns) then
+            goto continue
+        end
+
+        -- 计算 provider/requester 索引
+        local p_index, _, p_type = remote.call("logistic-train-network", "get_next_logistic_stop", train)
+        local r_index, r_type
+        if p_type == "provider" then
+            r_index, _, r_type = remote.call("logistic-train-network", "get_next_logistic_stop", train, (p_index or 0) + 1)
+        else
+            -- 若第一站不是 provider，尝试直接获取 requester
+            r_index, _, r_type = remote.call("logistic-train-network", "get_next_logistic_stop", train)
+            if r_type ~= "requester" then
+                r_index, _, r_type = remote.call("logistic-train-network", "get_next_logistic_stop", train, (r_index or 0) + 1)
+            end
+        end
+
+        -- 按 SE 逻辑插入（倒序避免索引偏移）：
+        -- 在 requester 后插入目标面中转站
+        if r_index and to_entity.surface ~= (loco and loco.valid and loco.surface or to_entity.surface) then
+            for _, conn in pairs(conns) do
+                local station = pick_station_for_surface(conn, to_entity.surface)
+                if station then
+                    add_station_to_schedule(train, station, r_index + 1)
+                end
+                break
+            end
+        end
+        -- 在 requester 前插入来源面中转站（当跨面时）
+        if r_index and from_entity.surface ~= to_entity.surface then
+            for _, conn in pairs(conns) do
+                local station = pick_station_for_surface(conn, from_entity.surface)
+                if station then
+                    add_station_to_schedule(train, station, r_index)
+                end
+                break
+            end
+        end
+        -- 在 provider 前插入来源面中转站（当机车不在来源面时）
+        if p_index and loco and loco.valid and loco.surface ~= from_entity.surface then
+            for _, conn in pairs(conns) do
+                local station = pick_station_for_surface(conn, from_entity.surface)
+                if station then
+                    add_station_to_schedule(train, station, p_index)
+                end
+                break
+            end
+        end
+
+        ::continue::
+    end
+end
+
+return LTN

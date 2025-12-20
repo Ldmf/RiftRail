@@ -299,25 +299,59 @@ function GUI.build_or_update(player, entity)
         end
     end
 
-    -- 8. Cybersyn 开关 (仅当安装了 Cybersyn 模组时显示)
-    -- [新增] 加入这个 if 判断
-    if script.active_mods["cybersyn"] then
-        inner_flow.add({ type = "line", direction = "horizontal" })
-        local cs_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
-        cs_flow.style.vertical_align = "center"
+    -- 8. Cybersyn 开关（始终显示，未安装时禁用）
+    inner_flow.add({ type = "line", direction = "horizontal" })
+    local cs_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
+    cs_flow.style.vertical_align = "center"
 
-        cs_flow.add({ type = "label", caption = { "gui.rift-rail-cybersyn-label" } })
-        cs_flow.add({
-            type = "switch",
-            name = "rift_rail_cybersyn_switch",
-            switch_state = my_data.cybersyn_enabled and "right" or "left",
-            right_label_caption = { "gui.rift-rail-cybersyn-connected" },
-            left_label_caption = { "gui.rift-rail-cybersyn-disconnected" },
-            tooltip = { "gui.rift-rail-cybersyn-tooltip" },
-            enabled = (my_data.paired_to_id ~= nil),
-        })
-    end
-    -- [新增] if 判断结束
+    cs_flow.add({ type = "label", caption = { "gui.rift-rail-cybersyn-label" } })
+    cs_flow.add({
+        type = "switch",
+        name = "rift_rail_cybersyn_switch",
+        switch_state = my_data.cybersyn_enabled and "right" or "left",
+        right_label_caption = { "gui.rift-rail-cybersyn-connected" },
+        left_label_caption = { "gui.rift-rail-cybersyn-disconnected" },
+        tooltip = script.active_mods["cybersyn"] and { "gui.rift-rail-cybersyn-tooltip" } or { "gui.rift-rail-cybersyn-disabled" },
+        enabled = script.active_mods["cybersyn"] and (my_data.paired_to_id ~= nil),
+    })
+
+    -- 8b. LTN 开关（始终显示，未安装时禁用）
+    inner_flow.add({ type = "line", direction = "horizontal" })
+    local ltn_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
+    ltn_flow.style.vertical_align = "center"
+
+    ltn_flow.add({ type = "label", caption = { "gui.rift-rail-ltn-label" } })
+    ltn_flow.add({
+        type = "switch",
+        name = "rift_rail_ltn_switch",
+        switch_state = my_data.ltn_enabled and "right" or "left",
+        right_label_caption = { "gui.rift-rail-ltn-connected" },
+        left_label_caption = { "gui.rift-rail-ltn-disconnected" },
+        tooltip = script.active_mods["LogisticTrainNetwork"] and { "gui.rift-rail-ltn-tooltip" } or { "gui.rift-rail-ltn-disabled" },
+        enabled = script.active_mods["LogisticTrainNetwork"] and (my_data.paired_to_id ~= nil),
+    })
+
+    -- network_id 输入（默认 -1），单独一行
+    local ltn_net_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
+    ltn_net_flow.style.vertical_align = "center"
+    ltn_net_flow.add({ type = "label", caption = { "gui.rift-rail-ltn-network-label" } })
+    local nid_text = tostring(my_data.ltn_network_id or -1)
+    local nid_field = ltn_net_flow.add({
+        type = "textfield",
+        name = "rift_rail_ltn_network_id",
+        text = nid_text,
+        numeric = true,
+        allow_negative = true,
+        tooltip = { "gui.rift-rail-ltn-network-tooltip" },
+    })
+    nid_field.style.width = 80
+    ltn_net_flow.add({
+        type = "button",
+        name = "rift_rail_ltn_apply_network",
+        caption = { "gui.rift-rail-ltn-apply-network" },
+        tooltip = { "gui.rift-rail-ltn-network-tooltip" },
+        enabled = script.active_mods["LogisticTrainNetwork"] and (my_data.paired_to_id ~= nil),
+    })
 
     -- 9. 远程预览
     inner_flow.add({ type = "line", direction = "horizontal" })
@@ -494,6 +528,30 @@ function GUI.handle_click(event)
         -- 远程观察
     elseif el_name == "rift_rail_remote_view_button" then
         remote.call("RiftRail", "open_remote_view", player.index, my_data.id)
+    elseif el_name == "rift_rail_ltn_apply_network" then
+        -- 查找 network_id 文本框
+        local function find_field(element)
+            if element.name == "rift_rail_ltn_network_id" then
+                return element
+            end
+            for _, child in pairs(element.children) do
+                local found = find_field(child)
+                if found then
+                    return found
+                end
+            end
+        end
+        local field = find_field(frame)
+        if field and field.text then
+            local val = tonumber(field.text) or -1
+            my_data.ltn_network_id = val
+            -- 若当前已连接，则刷新连接以应用新的 network_id
+            if my_data.paired_to_id and my_data.ltn_enabled then
+                remote.call("RiftRail", "set_ltn_enabled", player.index, my_data.id, false)
+                remote.call("RiftRail", "set_ltn_enabled", player.index, my_data.id, true)
+            end
+            GUI.build_or_update(player, my_data.shell)
+        end
     end
 end
 
@@ -527,6 +585,9 @@ function GUI.handle_switch_state_changed(event)
     elseif el_name == "rift_rail_cybersyn_switch" then
         local enabled = (event.element.switch_state == "right")
         remote.call("RiftRail", "set_cybersyn_enabled", player.index, my_data.id, enabled)
+    elseif el_name == "rift_rail_ltn_switch" then
+        local enabled = (event.element.switch_state == "right")
+        remote.call("RiftRail", "set_ltn_enabled", player.index, my_data.id, enabled)
     end
 end
 

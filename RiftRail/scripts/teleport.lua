@@ -166,8 +166,7 @@ local function collect_gui_watchers(train_id)
                 local gt = p.opened_gui_type
                 if gt == defines.gui_type.train or gt == defines.gui_type.entity then
                     local typ = opened.object_name
-                    local watching = (typ == "LuaTrain" and opened.id == train_id)
-                        or (typ == "LuaEntity" and opened.train and opened.train.id == train_id)
+                    local watching = (typ == "LuaTrain" and opened.id == train_id) or (typ == "LuaEntity" and opened.train and opened.train.id == train_id)
                     if watching then
                         res[#res + 1] = p.index
                     end
@@ -721,6 +720,21 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
         -- 3. 保存新火车的时刻表索引 (解决重置问题)
         -- transfer_schedule 内部已经调用了 go_to_station，所以现在的 current 是正确的下一站
+
+        -- [LTN] 无 SE 时执行重指派与临时站插入，保持交付不中断
+        if (not script.active_mods["space-exploration"]) and remote.interfaces["logistic-train-network"] and exit_struct.old_train_id then
+            local ok, has_delivery = pcall(remote.call, "logistic-train-network", "reassign_delivery", exit_struct.old_train_id, new_carriage.train)
+            if ok and has_delivery then
+                local insert_index = remote.call("logistic-train-network", "get_or_create_next_temp_stop", new_carriage.train)
+                if insert_index ~= nil then
+                    local sched = new_carriage.train.get_schedule()
+                    if sched and (sched.current > insert_index) then
+                        sched.go_to_station(insert_index)
+                    end
+                end
+                log_tp("LTN兼容: 已重指派交付并插入临时站。")
+            end
+        end
     end
 
     -- 销毁旧车厢
@@ -915,7 +929,7 @@ function Teleport.manage_speed(struct)
                     train_exit.speed = target_speed * required_sign
                 end
             end
-            
+
             -- [关键修复] 在速度管理过程中持续保存出口列车速度
             -- 这样传送结束时使用的就是被维持的高速，而不是刚生成时的 0 速度
             exit_struct.final_train_speed = train_exit.speed
