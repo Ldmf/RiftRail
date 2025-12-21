@@ -1,4 +1,23 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.7.3
+Date: 2025-12-23
+  Bugfixes:
+    - [图标] 修复了 Rift Rail 科技图标尺寸错误导致的游戏报错：The given sprite rectangle (left_top=0x0, right_bottom=128x128) is outside the actual sprite size (left_top=0x0, right_bottom=64x64). If this is being used as an icon you may need to define the icon_size property. See the log file for more information.: __RiftRail__/graphics/icon/riftrail.png。
+  Maintenance:
+    - 版本号提升至 0.7.3。
+---------------------------------------------------------------------------------------------------
+Version: 0.7.2
+Date: 2025-12-22
+  Features:
+    - [科技] 新增 Rift Rail 专属科技，需在“自动化铁路交通”后解锁，科技图标与建筑图标统一。
+    - [配方] Rift Rail 放置器配方调整为 100 铁轨制造 2 个建筑，制造时间改为 1 分钟。
+    - [拖船] Rift Rail 拖船实体添加科技图标。
+    - [GUI] Cybersyn 和 LTN 开关仅在安装对应模组时显示，LTN 网络ID输入框同样受控。
+  Changes:
+    - [本地化] 科技名称与描述条目修正，采用标准 [technology-name] 节点，解决 unknown key 问题。
+  Maintenance:
+    - 版本号提升至 0.7.2。
+---------------------------------------------------------------------------------------------------
 Version: 0.7.1
 Date: 2025-12-21
   Bugfixes:

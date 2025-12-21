@@ -299,59 +299,63 @@ function GUI.build_or_update(player, entity)
         end
     end
 
-    -- 8. Cybersyn 开关（始终显示，未安装时禁用）
-    inner_flow.add({ type = "line", direction = "horizontal" })
-    local cs_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
-    cs_flow.style.vertical_align = "center"
+    -- 8. Cybersyn 开关（仅在安装 Cybersyn 时显示）
+    if script.active_mods["cybersyn"] then
+        inner_flow.add({ type = "line", direction = "horizontal" })
+        local cs_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
+        cs_flow.style.vertical_align = "center"
+        cs_flow.add({ type = "label", caption = { "gui.rift-rail-cybersyn-label" } })
+        cs_flow.add({
+            type = "switch",
+            name = "rift_rail_cybersyn_switch",
+            switch_state = my_data.cybersyn_enabled and "right" or "left",
+            right_label_caption = { "gui.rift-rail-cybersyn-connected" },
+            left_label_caption = { "gui.rift-rail-cybersyn-disconnected" },
+            tooltip = { "gui.rift-rail-cybersyn-tooltip" },
+            enabled = (my_data.paired_to_id ~= nil),
+        })
+    end
 
-    cs_flow.add({ type = "label", caption = { "gui.rift-rail-cybersyn-label" } })
-    cs_flow.add({
-        type = "switch",
-        name = "rift_rail_cybersyn_switch",
-        switch_state = my_data.cybersyn_enabled and "right" or "left",
-        right_label_caption = { "gui.rift-rail-cybersyn-connected" },
-        left_label_caption = { "gui.rift-rail-cybersyn-disconnected" },
-        tooltip = script.active_mods["cybersyn"] and { "gui.rift-rail-cybersyn-tooltip" } or { "gui.rift-rail-cybersyn-disabled" },
-        enabled = script.active_mods["cybersyn"] and (my_data.paired_to_id ~= nil),
-    })
+    -- 8b. LTN 开关（仅在安装 LTN 时显示）
+    if script.active_mods["LogisticTrainNetwork"] then
+        inner_flow.add({ type = "line", direction = "horizontal" })
+        local ltn_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
+        ltn_flow.style.vertical_align = "center"
+        ltn_flow.add({ type = "label", caption = { "gui.rift-rail-ltn-label" } })
+        ltn_flow.add({
+            type = "switch",
+            name = "rift_rail_ltn_switch",
+            switch_state = my_data.ltn_enabled and "right" or "left",
+            right_label_caption = { "gui.rift-rail-ltn-connected" },
+            left_label_caption = { "gui.rift-rail-ltn-disconnected" },
+            tooltip = { "gui.rift-rail-ltn-tooltip" },
+            enabled = (my_data.paired_to_id ~= nil),
+        })
+    end
 
-    -- 8b. LTN 开关（始终显示，未安装时禁用）
-    inner_flow.add({ type = "line", direction = "horizontal" })
-    local ltn_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
-    ltn_flow.style.vertical_align = "center"
-
-    ltn_flow.add({ type = "label", caption = { "gui.rift-rail-ltn-label" } })
-    ltn_flow.add({
-        type = "switch",
-        name = "rift_rail_ltn_switch",
-        switch_state = my_data.ltn_enabled and "right" or "left",
-        right_label_caption = { "gui.rift-rail-ltn-connected" },
-        left_label_caption = { "gui.rift-rail-ltn-disconnected" },
-        tooltip = script.active_mods["LogisticTrainNetwork"] and { "gui.rift-rail-ltn-tooltip" } or { "gui.rift-rail-ltn-disabled" },
-        enabled = script.active_mods["LogisticTrainNetwork"] and (my_data.paired_to_id ~= nil),
-    })
-
-    -- network_id 输入（默认 -1），单独一行
-    local ltn_net_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
-    ltn_net_flow.style.vertical_align = "center"
-    ltn_net_flow.add({ type = "label", caption = { "gui.rift-rail-ltn-network-label" } })
-    local nid_text = tostring(my_data.ltn_network_id or -1)
-    local nid_field = ltn_net_flow.add({
-        type = "textfield",
-        name = "rift_rail_ltn_network_id",
-        text = nid_text,
-        numeric = true,
-        allow_negative = true,
-        tooltip = { "gui.rift-rail-ltn-network-tooltip" },
-    })
-    nid_field.style.width = 80
-    ltn_net_flow.add({
-        type = "button",
-        name = "rift_rail_ltn_apply_network",
-        caption = { "gui.rift-rail-ltn-apply-network" },
-        tooltip = { "gui.rift-rail-ltn-network-tooltip" },
-        enabled = script.active_mods["LogisticTrainNetwork"] and (my_data.paired_to_id ~= nil),
-    })
+    -- network_id 输入（仅在安装 LTN 时显示）
+    if script.active_mods["LogisticTrainNetwork"] then
+        local ltn_net_flow = inner_flow.add({ type = "flow", direction = "horizontal" })
+        ltn_net_flow.style.vertical_align = "center"
+        ltn_net_flow.add({ type = "label", caption = { "gui.rift-rail-ltn-network-label" } })
+        local nid_text = tostring(my_data.ltn_network_id or -1)
+        local nid_field = ltn_net_flow.add({
+            type = "textfield",
+            name = "rift_rail_ltn_network_id",
+            text = nid_text,
+            numeric = true,
+            allow_negative = true,
+            tooltip = { "gui.rift-rail-ltn-network-tooltip" },
+        })
+        nid_field.style.width = 80
+        ltn_net_flow.add({
+            type = "button",
+            name = "rift_rail_ltn_apply_network",
+            caption = { "gui.rift-rail-ltn-apply-network" },
+            tooltip = { "gui.rift-rail-ltn-network-tooltip" },
+            enabled = (my_data.paired_to_id ~= nil),
+        })
+    end
 
     -- 9. 远程预览
     inner_flow.add({ type = "line", direction = "horizontal" })

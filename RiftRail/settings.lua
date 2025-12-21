@@ -5,25 +5,15 @@ if not data then
 end
 
 data:extend({
-    -- [新增] Cybersyn 通知显示开关
+    -- [新增] 统一的跨地表连接通知开关（Cybersyn + LTN）
     {
         type = "bool-setting",
-        name = "rift-rail-show-cybersyn-notifications", -- 代码中使用的内部名称
-        setting_type = "runtime-per-user",              -- 每个玩家单独设置
-        default_value = true,                           -- 默认开启
-        order = "a",                                    -- 排序
-        -- 本地化键值 (会自动去 strings.cfg 找对应的翻译)
-        localised_name = { "mod-setting-name.rift-rail-show-cybersyn-notifications" },
-    },
-    -- [新增] Cybersyn 全局提示开关（玩家个性化）
-    {
-        type = "bool-setting",
-        name = "rift-rail-show-cybersyn-global", -- 控制是否看到全局 Cybersyn 提示
-        setting_type = "runtime-per-user",       -- 每个玩家单独设置
-        default_value = true,                     -- 默认开启
-        order = "a-b",                           -- 紧跟通知开关之后
-        localised_name = { "mod-setting-name.rift-rail-show-cybersyn-global" },
-        localised_description = { "mod-setting-description.rift-rail-show-cybersyn-global" },
+        name = "rift-rail-show-logistics-notifications", -- 统一的设置名
+        setting_type = "runtime-per-user",               -- 每个玩家单独设置
+        default_value = true,                            -- 默认开启
+        order = "a",                                     -- 排序
+        localised_name = { "mod-setting-name.rift-rail-show-logistics-notifications" },
+        localised_description = { "mod-setting-description.rift-rail-show-logistics-notifications" },
     },
     -- 追加在最后一个设置的后面，别忘了逗号
     {

@@ -197,27 +197,24 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
         opposite_struct.cybersyn_enabled = connect
 
         -- [修改] 改为全局提示，所有玩家都能看到
-        -- [修改] 使用富文本显示，支持图标
-        local function build_display_name(struct)
-            local richtext = ""
-            if struct and struct.icon and struct.icon.type and struct.icon.name then
-                richtext = "[" .. struct.icon.type .. "=" .. struct.icon.name .. "] "
-            end
-            if struct then
-                richtext = richtext .. struct.name
-            end
-            return richtext
-        end
+        -- 玩家通知（带双向 GPS 标签，受统一设置控制）
+        local name1 = portal_struct.name or "RiftRail"
+        local pos1 = portal_struct.shell.position
+        local surface1 = portal_struct.shell.surface.name
+        local gps1 = "[gps=" .. pos1.x .. "," .. pos1.y .. "," .. surface1 .. "]"
 
-        local portal_display = build_display_name(portal_struct)
-        -- 仅对开启选项的玩家推送提示（默认开启，可单独关闭）
+        local name2 = opposite_struct.name or "RiftRail"
+        local pos2 = opposite_struct.shell.position
+        local surface2 = opposite_struct.shell.surface.name
+        local gps2 = "[gps=" .. pos2.x .. "," .. pos2.y .. "," .. surface2 .. "]"
+
         for _, player in pairs(game.connected_players) do
-            local setting = settings.get_player_settings(player)["rift-rail-show-cybersyn-global"]
+            local setting = settings.get_player_settings(player)["rift-rail-show-logistics-notifications"]
             if setting and setting.value then
                 if connect then
-                    player.print({ "messages.rift-rail-info-cybersyn-connected", portal_display })
+                    player.print({ "messages.rift-rail-info-cybersyn-connected", name1, gps1, name2, gps2 })
                 else
-                    player.print({ "messages.rift-rail-info-cybersyn-disconnected", portal_display })
+                    player.print({ "messages.rift-rail-info-cybersyn-disconnected", name1, gps1, name2, gps2 })
                 end
             end
         end
@@ -288,10 +285,9 @@ function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
         end
     end
 
-    -- 3. 通知玩家 (如果设置允许)
     if is_landing or is_takeoff then
         for _, player in pairs(game.players) do
-            if settings.get_player_settings(player)["rift-rail-show-cybersyn-notifications"].value then
+            if settings.get_player_settings(player)["rift-rail-show-logistics-notifications"].value then
                 if is_landing then
                     player.print({ "messages.rift-rail-cybersyn-landing", new_struct.name })
                 elseif is_takeoff then

@@ -84,6 +84,7 @@ local entity_sprite = {
     shift = { 0, 0 },
 }
 
+require("technology")
 data:extend({
     -- 物品与配方
     {
@@ -99,12 +100,12 @@ data:extend({
     {
         type = "recipe",
         name = "rift-rail-placer",
-        enabled = true,
-        energy_required = 0.1,
+        enabled = false,
+        energy_required = 30,
         ingredients = {
-            { type = "item", name = "iron-plate", amount = 1 },
+            { type = "item", name = "rail", amount = 100 },
         },
-        results = { { type = "item", name = "rift-rail-placer", amount = 1 } },
+        results = { { type = "item", name = "rift-rail-placer", amount = 2 } },
     },
 
     -- 1. 放置器实体 (Placer)
@@ -342,6 +343,8 @@ data:extend({
         subgroup = "other",
         flags = { "not-blueprintable", "not-deconstructable" },
         hidden = true, -- 隐藏实体
+    	icon = "__RiftRail__/graphics/icon/riftrail.png",
+    	icon_size = 64,
 
         -- 物理属性
         collision_box = { { -0.6, -0.3 }, { 0.6, 0.3 } },

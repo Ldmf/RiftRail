@@ -100,15 +100,24 @@ function LTN.update_connection(portal_struct, opposite_struct, connect, player)
     portal_struct.ltn_enabled = connect
     opposite_struct.ltn_enabled = connect
 
-    -- 全局提示（可由玩家设置开关控制）
-    local name = portal_struct.name or "RiftRail"
+    -- 玩家通知（带双向 GPS 标签，受设置控制）
+    local name1 = portal_struct.name or "RiftRail"
+    local pos1 = portal_struct.shell.position
+    local surface1 = portal_struct.shell.surface.name
+    local gps1 = "[gps=" .. pos1.x .. "," .. pos1.y .. "," .. surface1 .. "]"
+
+    local name2 = opposite_struct.name or "RiftRail"
+    local pos2 = opposite_struct.shell.position
+    local surface2 = opposite_struct.shell.surface.name
+    local gps2 = "[gps=" .. pos2.x .. "," .. pos2.y .. "," .. surface2 .. "]"
+
     for _, p in pairs(game.connected_players) do
-        local setting = settings.get_player_settings(p)["rift-rail-show-ltn-global"]
+        local setting = settings.get_player_settings(p)["rift-rail-show-logistics-notifications"]
         if setting and setting.value then
             if connect then
-                p.print({ "messages.rift-rail-info-ltn-connected", name })
+                p.print({ "messages.rift-rail-info-ltn-connected", name1, gps1, name2, gps2 })
             else
-                p.print({ "messages.rift-rail-info-ltn-disconnected", name })
+                p.print({ "messages.rift-rail-info-ltn-disconnected", name1, gps1, name2, gps2 })
             end
         end
     end
@@ -167,7 +176,9 @@ local function add_station_to_schedule(train, station_entity, insert_index)
         local i = 1
         while true do
             local rec = schedule.get_record({ schedule_index = i })
-            if not rec then break end
+            if not rec then
+                break
+            end
             if rec.station == station_name then
                 return
             end
