@@ -230,13 +230,13 @@ function LTN.on_dispatcher_updated(e)
             goto continue
         end
 
-        -- 防重键：基于 train_id + from_id + to_id，避免异常重复触发导致的再次插入
-        storage.ltn_handled_keys = storage.ltn_handled_keys or {}
-        local key = string.format("%s:%s:%s", tostring(train.id), tostring(d.from_id or 0), tostring(d.to_id or 0))
-        if storage.ltn_handled_keys[key] then
-            ltn_log("[LTNCompat] 跳过重复处理: key=" .. key)
-            goto continue
-        end
+        -- -- 防重键：基于 train_id + from_id + to_id，避免异常重复触发导致的再次插入
+        -- storage.ltn_handled_keys = storage.ltn_handled_keys or {}
+        -- local key = string.format("%s:%s:%s", tostring(train.id), tostring(d.from_id or 0), tostring(d.to_id or 0))
+        -- if storage.ltn_handled_keys[key] then
+        --     ltn_log("[LTNCompat] 跳过重复处理: key=" .. key)
+        --     goto continue
+        -- end
 
         -- 计算 provider/requester 索引
         local p_index, _, p_type = remote.call("logistic-train-network", "get_next_logistic_stop", train)
@@ -283,8 +283,8 @@ function LTN.on_dispatcher_updated(e)
             end
         end
 
-        -- 标记此交付已处理，防止重复插入
-        storage.ltn_handled_keys[key] = true
+        -- 标记此交付已处理，防止重复插入（暂时停用）
+        -- storage.ltn_handled_keys[key] = true
 
         ::continue::
     end
