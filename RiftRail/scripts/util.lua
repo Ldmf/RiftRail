@@ -147,6 +147,7 @@ function Util.transfer_fluids(source_entity, destination_entity)
 end
 
 -- 转移装备网格 (模块装甲/车辆装备)
+-- [修改] 修复了电量、护盾、燃料和品质丢失的问题
 function Util.transfer_equipment_grid(source_entity, destination_entity)
     if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then
         return
@@ -154,9 +155,39 @@ function Util.transfer_equipment_grid(source_entity, destination_entity)
 
     if source_entity.grid and destination_entity.grid then
         log_util("DEBUG: 发现装备网格，开始转移装备...")
-        for _, item_stack in pairs(source_entity.grid.equipment) do
-            if item_stack then
-                destination_entity.grid.put({ name = item_stack.name, position = item_stack.position })
+
+        -- 遍历源网格中的每一个装备
+        for _, item in pairs(source_entity.grid.equipment) do
+            if item and item.valid then
+                -- 1. 放置新装备
+                -- [关键新增] 传入 quality 参数 (适配 Factorio 2.0)
+                -- 即使是旧版本，传入 nil 的 quality 通常也是安全的（或被忽略）
+                local new_item = destination_entity.grid.put({
+                    name = item.name,
+                    position = item.position,
+                    quality = item.quality,
+                })
+
+                -- 2. 如果创建成功，则同步内部状态
+                if new_item then
+                    -- [新增] 同步护盾值 (Shield)
+                    if item.shield and item.shield > 0 then
+                        new_item.shield = item.shield
+                    end
+
+                    -- [新增] 同步电量 (Energy) - 包括电池、外骨骼、护盾发生器的充电量
+                    if item.energy and item.energy > 0 then
+                        new_item.energy = item.energy
+                    end
+
+                    -- [新增] 同步燃烧室 (Burner) - 例如便携核反应堆、燃烧发电机
+                    -- 我们直接复用 Util.se_transfer_burner，因为它只检查 .burner 属性，对 equipment 也适用
+                    if item.burner and new_item.burner then
+                        Util.se_transfer_burner(item, new_item)
+                    end
+                else
+                    log_util("!! 警告: 无法在目标网格位置创建装备: " .. item.name)
+                end
             end
         end
     end
