@@ -326,6 +326,23 @@ end
 local function finish_teleport(entry_struct, exit_struct)
     log_tp("传送结束: 清理状态 (入口ID: " .. entry_struct.id .. ", 出口ID: " .. exit_struct.id .. ")")
 
+    -- [新增] 预先计算方向系数 (默认为1)
+    -- 必须在销毁引导车之前，利用 first_carriage 进行拓扑判断
+    local speed_direction_mult = 1
+
+    if exit_struct.leadertrain and exit_struct.leadertrain.valid and exit_struct.first_carriage and exit_struct.first_carriage.valid then
+        -- 检查第一节车厢是用"脸(Front)"连着引导车吗？
+        local front_connection = exit_struct.first_carriage.get_connected_rolling_stock(defines.rail_direction.front)
+
+        if front_connection == exit_struct.leadertrain then
+            -- 脸对屁股 -> 朝向一致 -> 正向
+            speed_direction_mult = 1
+        else
+            -- 屁股对屁股 -> 朝向相反 -> 反向
+            speed_direction_mult = -1
+        end
+    end
+
     -- 1. 直接炸掉引导车
     if exit_struct.leadertrain and exit_struct.leadertrain.valid then
         exit_struct.leadertrain.destroy()
@@ -354,13 +371,9 @@ local function finish_teleport(entry_struct, exit_struct)
 
         -- 3. 恢复速度：优先使用最后保存的出口实际速度，其次引导车销毁前速度，最后才用入口速度
         -- 这样可以保持传送过程中获得的动量，避免结束时骤降
-        local restored_speed = exit_struct.final_train_speed or exit_struct.saved_speed or 0
-        local success = pcall(function()
-            final_train.speed = restored_speed
-        end)
-        if not success then
-            final_train.speed = restored_speed * -1
-        end
+        -- 使用 final_train_speed (最准)，取绝对值后乘以方向系数
+        local raw_speed = exit_struct.final_train_speed or exit_struct.saved_speed or 0
+        final_train.speed = math.abs(raw_speed) * speed_direction_mult
 
         -- 数据恢复 (注入灵魂)
         if exit_struct.old_train_id and exit_struct.cybersyn_snapshot then
@@ -393,6 +406,7 @@ local function finish_teleport(entry_struct, exit_struct)
     exit_struct.carriage_behind = nil
     exit_struct.carriage_ahead = nil
     exit_struct.old_train_id = nil
+    exit_struct.first_carriage = nil -- [新增] 清理引用
 
     -- 6. 【关键】标记需要重建入口碰撞器
     -- 我们不在这里直接创建，而是交给 on_tick 去计算正确的坐标并创建
@@ -621,6 +635,12 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         force = carriage.force,
         quality = carriage.quality,
     })
+
+    -- 专门记录第一节传送过来的车厢，用于 finish_teleport 时检测与引导车的连接方向
+    -- is_first_carriage 是函数开头定义的变量
+    if is_first_carriage then
+        exit_struct.first_carriage = new_carriage
+    end
 
     if not new_carriage then
         log_tp("严重错误: 无法在出口创建车厢！")
