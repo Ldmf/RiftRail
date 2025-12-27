@@ -665,4 +665,87 @@ remote.add_interface("RiftRail", {
     open_remote_view = function(player_index, portal_id)
         Logic.open_remote_view(player_index, portal_id)
     end,
+
+    -- ============================================================================
+    -- [调试专用接口]
+    -- ============================================================================
+    --[[
+        [使用方法] (在控制台 ~ 中输入)
+
+        1. 查询总数:
+        /c game.print(remote.call("RiftRail", "debug_storage", "count"))
+
+        2. 查询存档大小:
+        /c game.print(remote.call("RiftRail", "debug_storage", "size"))
+
+        3. 查询鼠标悬停的传送门数据 (最常用):
+        /c local data = remote.call("RiftRail", "debug_storage", "selected", nil, game.player.index); game.print(serpent.line(data, {compact = true, singleline = {'table', 4}}))
+
+        4. 通过自定义ID查询 (例如 ID为 27):
+        /c local id=27; game.print(serpent.line(remote.call("RiftRail", "debug_storage", "get_by_id", id)))
+        
+        5. 通过实体Unit Number查询 (旧方法):
+        /c local id=12345; game.print(serpent.block(remote.call("RiftRail", "debug_storage", "get_by_unit", id)))
+
+    ]]
+    debug_storage = function(key, param, player_index) -- [修改] 增加 player_index 参数
+        -- 内部辅助函数，用于获取 struct
+        local function get_struct(struct_key, search_param)
+            if struct_key == "selected" then
+                if not player_index then
+                    return "Error: 'selected' requires player context."
+                end
+                local player = game.get_player(player_index)
+                if not (player and player.valid) then
+                    return "Error: Invalid player."
+                end
+
+                local selected = player.selected
+                if not (selected and selected.valid) then
+                    return "Error: No entity selected. Hover mouse over a Rift Rail building."
+                end
+
+                -- 通过 State 模块反查
+                return State.get_struct(selected) or "Error: Selected entity is not a Rift Rail portal."
+            elseif struct_key == "get_by_id" then
+                if not search_param then
+                    return "Error: 'get_by_id' requires a custom ID parameter."
+                end
+                -- 通过 State 模块的 ID 映射查找
+                return State.get_struct_by_id(search_param) or "Error: Struct with custom ID " .. tostring(search_param) .. " not found."
+            elseif struct_key == "get_by_unit" then
+                if not search_param then
+                    return "Error: 'get_by_unit' requires a unit_number parameter."
+                end
+                if storage.rift_rails and storage.rift_rails[search_param] then
+                    return storage.rift_rails[search_param]
+                else
+                    return "Error: Struct with unit_number " .. tostring(search_param) .. " not found."
+                end
+            end
+            return nil
+        end
+
+        if key == "count" then
+            local count = 0
+            if storage.rift_rails then
+                for _ in pairs(storage.rift_rails) do
+                    count = count + 1
+                end
+            end
+            return "Total Rift Rails in storage: " .. count
+        elseif key == "size" then
+            if storage.rift_rails then
+                local data_string = serpent.block(storage.rift_rails)
+                local size_kb = string.len(data_string) / 1024
+                return "RiftRail storage size: " .. string.format("%.2f KB", size_kb)
+            else
+                return "storage.rift_rails not found!"
+            end
+        elseif key == "selected" or key == "get_by_id" or key == "get_by_unit" then
+            return get_struct(key, param)
+        end
+
+        return "Unknown debug key. Available: 'count', 'size', 'selected', 'get_by_id', 'get_by_unit'."
+    end,
 })

@@ -24,7 +24,7 @@ local function log_util(message)
 end
 
 ---------------------------------------------------------------------------
--- 1. 向量与几何计算 (无改动)
+-- 1. 向量与几何计算
 ---------------------------------------------------------------------------
 
 -- 向量相加
@@ -203,7 +203,9 @@ function Util.transfer_all_inventories(source_entity, destination_entity)
     end
 
     if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then
-        log_util("错误: 源或目标实体无效，无法转移物品。")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_util("错误: 源或目标实体无效，无法转移物品。")
+        end
         return
     end
 
@@ -294,7 +296,7 @@ function Util.transfer_inventory_filters(source_entity, destination_entity, inve
 end
 
 ---------------------------------------------------------------------------
--- 4. 其他辅助工具 (无改动)
+-- 4. 其他辅助工具
 ---------------------------------------------------------------------------
 
 -- 将 SignalID 转换为富文本字符串 (用于 GUI 显示)

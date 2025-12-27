@@ -280,16 +280,22 @@ end
 function Teleport.init_se_events()
     -- 确保 on_load 时也能拿到最新的日志函数
     if script.active_mods["space-exploration"] and remote.interfaces["space-exploration"] then
-        log_tp("Teleport: 正在尝试从 SE 获取传送事件 ID (on_load)...")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("Teleport: 正在尝试从 SE 获取传送事件 ID (on_load)...")
+        end
         local success, event_started = pcall(remote.call, "space-exploration", "get_on_train_teleport_started_event")
         local _, event_finished = pcall(remote.call, "space-exploration", "get_on_train_teleport_finished_event")
 
         if success and event_started then
             SE_TELEPORT_STARTED_EVENT_ID = event_started
             SE_TELEPORT_FINISHED_EVENT_ID = event_finished
-            log_tp("Teleport: SE 传送事件 ID 获取成功！")
+            if RiftRail.DEBUG_MODE_ENABLED then
+                log_tp("Teleport: SE 传送事件 ID 获取成功！")
+            end
         else
-            log_tp("Teleport: 警告 - 无法从 SE 获取传送事件 ID。")
+            if RiftRail.DEBUG_MODE_ENABLED then
+                log_tp("Teleport: 警告 - 无法从 SE 获取传送事件 ID。")
+            end
         end
     end
 end
@@ -382,7 +388,9 @@ local function finish_teleport(entry_struct, exit_struct)
     if exit_struct.carriage_ahead and exit_struct.carriage_ahead.valid then
         final_train = exit_struct.carriage_ahead.train
     else
-        log_tp("警告: finish_teleport 时出口车厢无效或丢失，跳过列车恢复逻辑。")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("警告: finish_teleport 时出口车厢无效或丢失，跳过列车恢复逻辑。")
+        end
     end
 
     if final_train and final_train.valid then
@@ -462,7 +470,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
     -- 安全检查
     if not (exit_struct and exit_struct.shell and exit_struct.shell.valid) then
-        log_tp("错误: 出口失效，传送中断。")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("错误: 出口失效，传送中断。")
+        end
         finish_teleport(entry_struct, entry_struct) -- 自身清理
         return
     end
@@ -470,7 +480,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     -- 检查入口车厢
     local carriage = entry_struct.carriage_behind
     if not (carriage and carriage.valid) then
-        log_tp("入口车厢失效或丢失，结束传送。")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("入口车厢失效或丢失，结束传送。")
+        end
         finish_teleport(entry_struct, exit_struct)
         return
     end
@@ -526,7 +538,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
 
     -- 堵塞处理
     if not is_clear then
-        log_tp("出口堵塞，暂停传送...")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("出口堵塞，暂停传送...")
+        end
         if carriage.train and not carriage.train.manual_mode then
             local sched = carriage.train.get_schedule()
             if not sched then
@@ -563,8 +577,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
                     index = { schedule_index = sched.current + 1 },
                 })
                 carriage.train.go_to_station(sched.current + 1)
-
-                log_tp("已插入临时路障站点。")
+                if RiftRail.DEBUG_MODE_ENABLED then
+                    log_tp("已插入临时路障站点。")
+                end
             end
         end
         return
@@ -689,7 +704,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     })
 
     if not new_carriage then
-        log_tp("严重错误: 无法在出口创建车厢！")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("严重错误: 无法在出口创建车厢！")
+        end
         finish_teleport(entry_struct, exit_struct)
         return
     end
@@ -757,7 +774,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
                         sched.go_to_station(insert_index)
                     end
                 end
-                log_tp("LTN兼容: 已重指派交付并插入临时站（本地兜底）。")
+                if RiftRail.DEBUG_MODE_ENABLED then
+                    log_tp("LTN兼容: 已重指派交付并插入临时站（本地兜底）。")
+                end
             end
         end
     end
@@ -795,7 +814,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
                 log_tp("引导车创建成功 ID: " .. leadertrain.unit_number)
             end
         else
-            log_tp("错误：引导车创建失败！")
+            if RiftRail.DEBUG_MODE_ENABLED then
+                log_tp("错误：引导车创建失败！")
+            end
         end
     end
 
@@ -821,7 +842,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     if next_carriage and next_carriage.valid then
         entry_struct.carriage_behind = next_carriage
     else
-        log_tp("最后一节车厢传送完毕。")
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("最后一节车厢传送完毕。")
+        end
         -- 传送结束，调用 finish_teleport 进行收尾 (销毁引导车，恢复最终速度)
         finish_teleport(entry_struct, exit_struct)
     end
@@ -1074,7 +1097,9 @@ function Teleport.on_tick(event)
                         local exit_struct = State.get_struct_by_id(struct.paired_to_id)
                         Teleport.teleport_next(struct, exit_struct)
                     else
-                        log_tp("传送序列正常结束，关闭状态。")
+                        if RiftRail.DEBUG_MODE_ENABLED then
+                            log_tp("传送序列正常结束，关闭状态。")
+                        end
                         struct.is_teleporting = false
                     end
                 end

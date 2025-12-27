@@ -3,13 +3,13 @@
 
 -- builder.lua
 local Builder = {}
-local State = nil -- <<-- [新增] 在文件顶部声明一个局部变量来存储 State
+local State = nil
 
 local log_debug = function() end
 
 function Builder.init(deps)
     State = deps.State
-    Logic = deps.Logic -- <<-- [新增] 接收从 control.lua 传来的 Logic
+    Logic = deps.Logic
     if deps.log_debug then
         log_debug = deps.log_debug
     end
@@ -84,7 +84,7 @@ local function get_rail_dir(dir)
     return 0
 end
 -- ============================================================================
--- 构建函数 (核心修改：支持蓝图恢复与标签读取)
+-- 构建函数 (支持蓝图恢复与标签读取)
 -- ============================================================================
 function Builder.on_built(event)
     local entity = event.entity
@@ -95,7 +95,7 @@ function Builder.on_built(event)
         return
     end
 
-    -- 【新增】确保 storage 结构完整
+    -- 确保 storage 结构完整
     if not storage.rift_rails then
         storage.rift_rails = {}
     end
@@ -146,7 +146,7 @@ function Builder.on_built(event)
 
     local children = {}
 
-    -- 【修改】辅助函数，用于创建子实体并记录相对坐标
+    -- 辅助函数，用于创建子实体并记录相对坐标
     local function create_child(name, relative_pos, child_dir, extra_properties)
         local world_pos = { x = position.x + relative_pos.x, y = position.y + relative_pos.y }
         local entity_proto = {
@@ -159,7 +159,7 @@ function Builder.on_built(event)
         -- 1. 先创建实体，不包含 backer_name
         local child_entity = surface.create_entity(entity_proto)
 
-        -- 2. 【核心修复】在实体创建之后，再设置它的运行时属性
+        -- 2. 在实体创建之后，再设置它的运行时属性
         if extra_properties and child_entity and child_entity.valid then
             if extra_properties.backer_name then
                 child_entity.backer_name = extra_properties.backer_name
@@ -243,17 +243,17 @@ function Builder.on_built(event)
         cybersyn_enabled = false,
         shell = shell,
         children = children,
-        collider_position = storage.temp_collider_pos, -- [新增]
-        blocker_position = storage.temp_blocker_pos, -- [新增]
+        collider_position = storage.temp_collider_pos,
+        blocker_position = storage.temp_blocker_pos,
     }
-    storage.temp_collider_pos = nil -- [新增]
-    storage.temp_blocker_pos = nil -- [新增]
+    storage.temp_collider_pos = nil
+    storage.temp_blocker_pos = nil
 
-    -- 【新增】维护 id_map 缓存
+    -- 维护 id_map 缓存
     storage.rift_rail_id_map[custom_id] = shell.unit_number
 end
 
--- [新增] 强制清理区域内的火车 (防止拆除铁轨后留下幽灵车厢)
+-- 强制清理区域内的火车 (防止拆除铁轨后留下幽灵车厢)
 local function clear_trains_inside(shell_entity)
     if not (shell_entity and shell_entity.valid) then
         return
@@ -305,7 +305,7 @@ function Builder.on_destroy(event)
         else
             for unit_num, data in pairs(storage.rift_rails) do
                 if data.children then
-                    -- 【修改】从新的 children 结构中查找
+                    -- 从新的 children 结构中查找
                     for _, child_data in pairs(data.children) do
                         if child_data.entity == entity then
                             target_unit_number = unit_num
@@ -356,7 +356,7 @@ function Builder.on_destroy(event)
             shell_entity.destroy()
         end
 
-        -- 【新增】维护 id_map 缓存
+        -- 维护 id_map 缓存
         storage.rift_rail_id_map[data.id] = nil
         storage.rift_rails[target_unit_number] = nil
         return
