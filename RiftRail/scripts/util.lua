@@ -83,7 +83,7 @@ function Util.transfer_burner_contents(source_entity, destination_entity)
         return
     end
 
-    -- [修正] 直接访问 .burner 属性，而不是调用不存在的 get_burner() 函数
+    -- 直接访问 .burner 属性，而不是调用不存在的 get_burner() 函数
     local burner_a = source_entity.burner
     local burner_b = destination_entity.burner
 
@@ -114,13 +114,13 @@ end
 -- 3. 高级内容转移 (整合逻辑)
 ---------------------------------------------------------------------------
 
--- 转移流体 (支持多个流体盒)
+-- 转移流体
 function Util.transfer_fluids(source_entity, destination_entity)
     if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then
         return
     end
 
-    -- [恢复老文件 API] 检查是否有流体盒
+    -- 检查是否有流体盒
     if not (source_entity.fluids_count and source_entity.fluids_count > 0) then
         return
     end
@@ -129,14 +129,14 @@ function Util.transfer_fluids(source_entity, destination_entity)
         log_util("DEBUG: 开始转移流体，流体盒数量: " .. source_entity.fluids_count)
     end
 
-    -- [恢复老文件 API] 循环
+    -- 循环
     for i = 1, source_entity.fluids_count do
-        -- [恢复老文件 API] 获取流体
+        -- 获取流体
         local fluid = source_entity.get_fluid(i)
 
-        -- [按要求] 不检查过滤器，不使用 pcall，直接写入
+        -- 不检查过滤器，不使用 pcall，直接写入
         if fluid then
-            -- [恢复老文件 API] 写入流体
+            -- 写入流体
             destination_entity.set_fluid(i, fluid)
         end
     end
@@ -206,24 +206,24 @@ function Util.transfer_all_inventories(source_entity, destination_entity)
         end
         local source_inv = source_entity.get_inventory(defines.inventory.cargo_wagon)
         local dest_inv = destination_entity.get_inventory(defines.inventory.cargo_wagon)
-
         Util.move_inventory_items(source_inv, dest_inv)
+        Util.transfer_inventory_filters(source_entity, destination_entity, defines.inventory.cargo_wagon)
     elseif entity_type == "locomotive" then
         if RiftRail.DEBUG_MODE_ENABLED then
             log_util("DEBUG: 匹配到机车，执行燃烧室与燃料转移。")
         end
-
         Util.transfer_burner_contents(source_entity, destination_entity)
+        Util.transfer_inventory_filters(source_entity, destination_entity, defines.inventory.fuel)
     elseif entity_type == "artillery-wagon" then
         if RiftRail.DEBUG_MODE_ENABLED then
             log_util("DEBUG: 匹配到火炮车厢，执行弹药转移。")
         end
         local source_inv = source_entity.get_inventory(defines.inventory.artillery_wagon_ammo)
         local dest_inv = destination_entity.get_inventory(defines.inventory.artillery_wagon_ammo)
-
         Util.move_inventory_items(source_inv, dest_inv)
+        Util.transfer_inventory_filters(source_entity, destination_entity, defines.inventory.artillery_wagon_ammo)
     elseif entity_type == "fluid-wagon" then
-        -- [修改] 显式调用流体转移函数
+        -- 显式调用流体转移函数
         if RiftRail.DEBUG_MODE_ENABLED then
             log_util("DEBUG: 匹配到流体车厢，执行流体转移。")
         end
@@ -236,13 +236,13 @@ function Util.transfer_all_inventories(source_entity, destination_entity)
             if RiftRail.DEBUG_MODE_ENABLED then
                 log_util("DEBUG: 未匹配到特定类型，执行通用主物品栏转移。")
             end
-            -- [修改] 调用我们新的函数
+            -- 调用我们新的函数
             Util.move_inventory_items(source_inv, dest_inv)
         end
     end
 end
 
--- 转移物品栏过滤器 (例如货车中间键设定的过滤)
+-- 转移物品栏过滤器 (修复版)
 function Util.transfer_inventory_filters(source_entity, destination_entity, inventory_index)
     if not (source_entity and source_entity.valid and destination_entity and destination_entity.valid) then
         return
@@ -255,23 +255,28 @@ function Util.transfer_inventory_filters(source_entity, destination_entity, inve
         return
     end
 
+    -- 1. 复制中间键设定的槽位过滤器
     if source_inv.is_filtered() then
         if RiftRail.DEBUG_MODE_ENABLED then
             log_util("DEBUG: 检测到过滤器，正在复制过滤设置...")
         end
+        -- 既然两节车厢是同一种类型，物品栏大小通常一致，直接遍历
         for i = 1, #dest_inv do
             local filter = source_inv.get_filter(i)
             if filter then
                 dest_inv.set_filter(i, filter)
             end
         end
-        dest_inv.filter_mode = source_inv.filter_mode
+        -- 删除 dest_inv.filter_mode = source_inv.filter_mode
+        -- 因为物品栏(Inventory)没有这个属性，它是实体(Entity)才有的，且货车不需要它。
     end
 
-    if destination_entity.supports_bar() then
-        local bar = source_entity.get_bar(inventory_index)
+    -- 2. 复制红叉限制 (Bar)
+    -- supports_bar 是 Inventory 的方法，不是 Entity 的
+    if dest_inv.supports_bar() then
+        local bar = source_inv.get_bar() -- Inventory.get_bar() 不需要参数
         if bar then
-            destination_entity.set_bar(inventory_index, bar)
+            dest_inv.set_bar(bar)
         end
     end
 end
