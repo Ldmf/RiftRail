@@ -1,5 +1,5 @@
 -- control.lua
--- Rift Rail - 主入口 v0.0.4
+-- Rift Rail - 主入口
 -- 功能：事件分发、日志管理、模块加载
 -- 更新：集成传送逻辑、补全玩家传送、事件分流
 
@@ -23,7 +23,7 @@ local function log_debug(msg)
 end
 
 -- 3. 加载模块
-local flib_util = require("util") -- 引入官方库，命名为 flib_util 避免和你自己的 Util 冲突
+local flib_util = require("util") -- 引入官方库，命名为 flib_util 避免和自己的 Util 冲突
 local Builder = require("scripts.builder")
 local GUI = require("scripts.gui")
 local State = require("scripts.state")
@@ -31,9 +31,9 @@ local Logic = require("scripts.logic")
 local Schedule = require("scripts.schedule")
 local Util = require("scripts.util")
 local Teleport = require("scripts.teleport")
-local CybersynSE = require("scripts.cybersyn_compat") -- [新增] 加载兼容模块
-local CybersynScheduler = require("scripts.cybersyn_scheduler") -- [新增]
-local LTN = require("scripts.ltn_compat") -- [新增] LTN 兼容模块
+local CybersynSE = require("scripts.cybersyn_compat")
+local CybersynScheduler = require("scripts.cybersyn_scheduler")
+local LTN = require("scripts.ltn_compat")
 
 -- 给 Builder 注入 CybersynSE (用于拆除清理)
 if Builder.init then
@@ -168,7 +168,7 @@ script.on_event(defines.events.on_entity_died, function(event)
         Builder.on_destroy(event)
     end
     -- 对于其他任何实体（火车、虫子、树）的死亡，我们一概不管
-end, rr_filters) -- <--- 过滤器加在这里 (作为第三个参数)
+end, rr_filters)
 
 -- D. Tick 循环
 script.on_event(defines.events.on_tick, function(event)
@@ -285,16 +285,16 @@ script.on_event(defines.events.on_entity_cloned, function(event)
 
                 -- 3. 在这个精确位置的稍大范围内，按名字查找克隆体
 
-                -- [核心修复] 为 'lamp' 使用更大的搜索半径，以应对克隆时的坐标漂移
+                -- 为 'lamp' 使用更大的搜索半径，以应对克隆时的坐标漂移
                 local search_radius = 0.5 -- 默认使用高精度半径
                 if child_name == "rift-rail-lamp" then
-                    search_radius = 2.0 -- 只为灯放宽到 1.0
+                    search_radius = 1.5 -- 只为灯放宽到 1.5
                 end
 
                 local found_clone = new_entity.surface.find_entities_filtered({
                     name = child_name,
                     position = expected_pos,
-                    radius = search_radius, -- [修改] 使用动态半径
+                    radius = search_radius, -- 使用动态半径
                     limit = 1,
                 })
 

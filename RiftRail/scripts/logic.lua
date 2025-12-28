@@ -28,7 +28,7 @@ local function refresh_all_guis()
         if opened and opened.valid and opened.object_name == "LuaEntity" and State.get_struct(opened) then
             GUI.build_or_update(player, opened)
 
-            -- 情况 2: [新增] 如果 opened 是我们的 GUI Frame
+            -- 情况 2: 如果 opened 是我们的 GUI Frame
         elseif opened and opened.valid and opened.object_name == "LuaGuiElement" and opened.name == "rift_rail_main_frame" then
             -- 从 tags 中获取 unit_number
             local unit_number = opened.tags.unit_number
@@ -44,7 +44,7 @@ local function refresh_all_guis()
     end
 end
 
--- [新增] 辅助函数：构建包含图标的富文本显示名称
+-- 辅助函数：构建包含图标的富文本显示名称
 local function build_display_name(struct)
     local richtext = ""
     if struct and struct.icon and struct.icon.type and struct.icon.name then
@@ -57,9 +57,9 @@ local function build_display_name(struct)
 end
 
 -- ============================================================================
--- [新增] 物理状态管理 (精准定点清除版)
+-- 物理状态管理 (精准定点清除版)
 -- ============================================================================
--- [修改] 物理状态管理 (带 children 列表同步)
+-- 物理状态管理 (带 children 列表同步)
 local function update_collider_state(struct)
     if not (struct and struct.shell and struct.shell.valid) then
         return
@@ -126,10 +126,10 @@ function Logic.update_name(player_index, portal_id, new_string)
         return
     end
 
-    -- 1. 解析输入 (逻辑不变)
+    -- 1. 解析输入
     local icon_type, icon_name, plain_name = string.match(new_string, "%[([%w%-]+)=([%w%-]+)%]%s*(.*)")
 
-    -- 2. 智能去重 (逻辑不变)
+    -- 2. 智能去重
     if icon_type and icon_name then
         if icon_name == "rift-rail-placer" then
             my_data.icon = nil
@@ -144,7 +144,7 @@ function Logic.update_name(player_index, portal_id, new_string)
 
     -- 3. 更新实体显示名称
     if my_data.children then
-        -- 【修改】适配新的 children 结构
+        -- 适配新的 children 结构
         for _, child_data in pairs(my_data.children) do
             local child = child_data.entity -- <<-- [核心修复] 先从表中取出实体
             if child and child.valid and child.name == "rift-rail-station" then
@@ -188,7 +188,7 @@ function Logic.set_mode(player_index, portal_id, mode, skip_sync)
 
     my_data.mode = mode
 
-    -- [新增] 立即更新物理碰撞器状态
+    -- 立即更新物理碰撞器状态
     update_collider_state(my_data)
 
     -- 消息提示
@@ -251,7 +251,7 @@ function Logic.pair_portals(player_index, source_id, target_id)
     source.paired_to_id = target_id
     target.paired_to_id = source_id
 
-    -- [修改] 使用富文本显示，支持图标（玩家个人消息，保留本地化）
+    -- 使用富文本显示，支持图标（玩家个人消息，保留本地化）
     local source_display = build_display_name(source)
     local target_display = build_display_name(target)
     player.print({ "messages.rift-rail-pair-success", source_display, target_display })
@@ -320,7 +320,7 @@ function Logic.open_remote_view(player_index, portal_id)
 end
 
 -- ============================================================================
--- 6. [修改] Cybersyn 开关控制 (接入真实逻辑)
+-- 6. Cybersyn 开关控制 (接入真实逻辑)
 -- ============================================================================
 function Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
     local player = game.get_player(player_index)
