@@ -301,4 +301,55 @@ function LTN.on_dispatcher_updated(e)
     end
 end
 
+-- ============================================================================
+-- [新增] 传送生命周期钩子
+-- ============================================================================
+
+-- 具体的重指派逻辑
+local function logic_reassign(new_train, old_id)
+    if not (new_train and new_train.valid and old_id) then
+        return
+    end
+
+    if remote.interfaces["logistic-train-network"] then
+        -- 调用 LTN 接口将旧列车的任务指派给新列车
+        local ok, has_delivery = pcall(remote.call, "logistic-train-network", "reassign_delivery", old_id, new_train)
+
+        if ok and has_delivery then
+            if RiftRail.DEBUG_MODE_ENABLED then
+                ltn_log("任务迁移: 已重指派交付给新列车 " .. new_train.id)
+            end
+
+            -- LTN 特性: 插入临时站以确保状态更新
+            local insert_index = remote.call("logistic-train-network", "get_or_create_next_temp_stop", new_train)
+            if insert_index then
+                local sched = new_train.schedule
+                if sched and (sched.current > insert_index) then
+                    new_train.go_to_station(insert_index)
+                end
+            end
+        end
+    end
+end
+
+local function noop() end
+
+-- 策略分发
+LTN.on_teleport_end = noop
+
+if script.active_mods["logistic-train-network"] then
+    local has_se = script.active_mods["space-exploration"]
+    local has_glue = script.active_mods["se-ltn-glue"]
+
+    -- 如果 (没装 SE) 或者 (装了 SE 但没装 Glue) -> 我们必须兜底
+    if (not has_se) or (has_se and not has_glue) then
+        LTN.on_teleport_end = logic_reassign
+        ltn_log("LTN兼容模式: 启用手动重指派")
+    else
+        -- 否则 (有 SE 且有 Glue) -> Glue 会处理，我们躺平
+        LTN.on_teleport_end = noop
+        ltn_log("LTN兼容模式: SE-Glue 托管")
+    end
+end
+
 return LTN

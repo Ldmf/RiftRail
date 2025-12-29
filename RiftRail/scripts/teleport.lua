@@ -11,6 +11,8 @@ local Teleport = {}
 local State = nil
 local Util = nil
 local Schedule = nil
+local CybersynCompat = nil
+local LtnCompat = nil
 
 -- 1. 定义一个空的日志函数占位符
 local log_debug = function() end
@@ -23,6 +25,9 @@ function Teleport.init(deps)
     if deps.log_debug then
         log_debug = deps.log_debug
     end
+    -- [新增] 接收兼容模块
+    CybersynCompat = deps.CybersynCompat
+    LtnCompat = deps.LtnCompat
 end
 
 -- 3. 定义本模块专属的、带 if 判断的日志包装器
@@ -36,41 +41,48 @@ end
 local SE_TELEPORT_STARTED_EVENT_ID = nil
 local SE_TELEPORT_FINISHED_EVENT_ID = nil
 
+-- =================================================================================
 -- 【Rift Rail 专用几何参数】
+-- =================================================================================
 -- 将偏移量调整为偶数 (0)，对准铁轨中心，防止生成失败
 -- 基于 "车厢生成在建筑中心 (y=0)" 的设定
 local GEOMETRY = {
     [0] = { -- North (出口在下方 Y+)
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.south,
-        -- 坐标反转：从 -4.0 (后方) 改为 4.0 (前方，即出口方向)
-        -- 这样 Leader Train 会生成在车厢和下方红绿灯(y=5)之间
         leadertrain_offset = { x = 0, y = 4.0 },
         velocity_mult = { x = 0, y = 1 },
+        -- [新增] 碰撞器重建偏移
+        collider_offset = { x = 0, y = -2 },
+        -- [新增] 堵车检测区域相对坐标 (左上, 右下)
+        check_area_rel = { lt = { x = -1, y = 0 }, rb = { x = 1, y = 10 } },
     },
     [4] = { -- East (出口在左方 X-)
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.west,
-        -- 坐标反转：从 4.0 (后方) 改为 -4.0 (前方，即出口方向)
-        -- 这样 Leader Train 会生成在车厢和左侧红绿灯(x=-5)之间
         leadertrain_offset = { x = -4.0, y = 0 },
         velocity_mult = { x = -1, y = 0 },
+        -- [新增]
+        collider_offset = { x = 2, y = 0 },
+        check_area_rel = { lt = { x = -10, y = -1 }, rb = { x = 0, y = 1 } },
     },
     [8] = { -- South (出口在上方 Y-)
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.north,
-        -- 坐标反转：从 4.0 (后方) 改为 -4.0 (前方，即出口方向)
-        -- 这样 Leader Train 会生成在车厢和上方红绿灯(y=-5)之间
         leadertrain_offset = { x = 0, y = -4.0 },
         velocity_mult = { x = 0, y = -1 },
+        -- [新增]
+        collider_offset = { x = 0, y = 2 },
+        check_area_rel = { lt = { x = -1, y = -10 }, rb = { x = 1, y = 0 } },
     },
     [12] = { -- West (出口在右方 X+)
         spawn_offset = { x = 0, y = 0 },
         direction = defines.direction.east,
-        -- 坐标反转：从 -4.0 (后方) 改为 4.0 (前方，即出口方向)
-        -- 这样 Leader Train 会生成在车厢和右侧红绿灯(x=5)之间
         leadertrain_offset = { x = 4.0, y = 0 },
         velocity_mult = { x = 1, y = 0 },
+        -- [新增]
+        collider_offset = { x = -2, y = 0 },
+        check_area_rel = { lt = { x = 0, y = -1 }, rb = { x = 10, y = 1 } },
     },
 }
 
@@ -114,52 +126,35 @@ local function add_to_active(struct)
     end
     table.insert(list, pos, struct)
 end
-
--- 从活跃列表移除
--- 优化移除逻辑
-local function remove_from_active(struct)
-    if not struct or not struct.unit_number then
-        return
+-- =================================================================================
+-- 通用查找子实体函数
+-- =================================================================================
+local function find_child_entity(struct, name_to_find)
+    if not (struct and struct.children) then
+        return nil
     end
-    if not storage.active_teleporters or not storage.active_teleporters[struct.unit_number] then
-        return
-    end
-
-    storage.active_teleporters[struct.unit_number] = nil
-    local list = storage.active_teleporter_list
-    local unit_number = struct.unit_number
-
-    -- 二分查找确定移除位置
-    local low, high = 1, #list
-    while low <= high do
-        local mid = math.floor((low + high) / 2)
-        local mid_val = list[mid].unit_number
-        if mid_val == unit_number then
-            table.remove(list, mid)
-            return
-        elseif mid_val < unit_number then
-            low = mid + 1
-        else
-            high = mid - 1
+    for _, child_data in pairs(struct.children) do
+        local entity = child_data.entity
+        if entity and entity.valid and entity.name == name_to_find then
+            return entity
         end
     end
+    return nil
 end
-
+-- =================================================================================
 -- 辅助函数：从子实体中获取真实的车站名称 (带图标)
+-- =================================================================================
 local function get_real_station_name(struct)
     -- 适配 children 结构 {entity=..., relative_pos=...}
-    if struct.children then
-        for _, child_data in pairs(struct.children) do
-            local child = child_data.entity
-            if child and child.valid and child.name == "rift-rail-station" then
-                return child.backer_name
-            end
-        end
+    local station = find_child_entity(struct, "rift-rail-station")
+    if station then
+        return station.backer_name
     end
     return struct.name
 end
-
+-- =================================================================================
 -- 记录/恢复正在查看列车 GUI 的玩家列表（兼容 train 和 entity 打开方式）
+-- =================================================================================
 local function collect_gui_watchers(train_id)
     local res = {}
     if not train_id then
@@ -182,7 +177,9 @@ local function collect_gui_watchers(train_id)
     end
     return res
 end
-
+-- =================================================================================
+-- 恢复列车 GUI 给指定玩家列表
+-- =================================================================================
 local function reopen_train_gui(watchers, train)
     if not watchers or #watchers == 0 then
         return 0
@@ -275,8 +272,246 @@ local function calculate_speed_sign(train, portal_struct)
     -- 异常情况 (无法获取铁轨端点)，返回默认正向
     return 1
 end
+-- =================================================================================
+-- 【克隆工厂】生成替身车厢并转移所有属性
+-- =================================================================================
+-- 参数：
+--   old_entity: 原车厢实体
+--   surface:    目标地表
+--   position:   目标坐标
+--   orientation:目标朝向 (0.0-1.0)
+-- 返回：新创建的车厢实体 (失败返回 nil)
+local function spawn_cloned_carriage(old_entity, surface, position, orientation)
+    if not (old_entity and old_entity.valid) then
+        return nil
+    end
 
+    -- 1. 创建实体 (Factorio 2.0 API: 支持 quality 和 orientation)
+    local new_entity = surface.create_entity({
+        name = old_entity.name,
+        position = position,
+        orientation = orientation,
+        force = old_entity.force,
+        quality = old_entity.quality,
+        snap_to_train_stop = false, -- 建议设为 false 以提高位置精确度
+    })
+
+    if not new_entity then
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("克隆工厂: 创建实体失败 " .. old_entity.name)
+        end
+        return nil
+    end
+
+    -- 2. 基础属性同步
+    new_entity.health = old_entity.health
+    new_entity.backer_name = old_entity.backer_name or ""
+    if old_entity.color then
+        new_entity.color = old_entity.color
+    end
+
+    -- 3. 内容转移 (调用 Util)
+    Util.transfer_all_inventories(old_entity, new_entity)
+    Util.transfer_fluids(old_entity, new_entity)
+    Util.transfer_equipment_grid(old_entity, new_entity)
+
+    -- 4. 司机转移 (特殊处理)
+    local driver = old_entity.get_driver()
+    if driver then
+        -- 必须先从旧车“下车”，防止被留在旧世界
+        old_entity.set_driver(nil)
+
+        if driver.object_name == "LuaPlayer" then
+            -- 玩家直接上新车 (引擎自动处理坐标跨越)
+            new_entity.set_driver(driver)
+        elseif driver.valid and driver.teleport then
+            -- NPC/AAI 矿车司机需要手动传送物理坐标
+            driver.teleport(new_entity.position, new_entity.surface)
+            new_entity.set_driver(driver)
+        end
+    end
+
+    return new_entity
+end
+-- =================================================================================
+-- 【纯函数】计算车厢在出口生成的朝向 (Orientation 0.0-1.0)
+-- =================================================================================
+-- 参数：
+--   entry_shell_dir: 入口传送门的朝向 (0, 4, 8, 12)
+--   exit_geo_dir:    出口传送门的目标朝向 (0, 4, 8, 12)
+--   current_ori:     车厢当前的朝向 (0.0 - 1.0)
+local function calculate_arrival_orientation(entry_shell_dir, exit_geo_dir, current_ori)
+    -- 1. 将入口建筑朝向转为 Orientation (0-1)
+    local entry_shell_ori = entry_shell_dir / 16.0
+
+    -- 2. 判断车厢是“顺着进”还是“倒着进”
+    -- 计算角度差 (处理 0.0/1.0 的环形边界)
+    local diff = math.abs(current_ori - entry_shell_ori)
+    if diff > 0.5 then
+        diff = 1.0 - diff
+    end
+
+    -- 判定阈值 (0.125 = 45度，小于45度夹角视为顺向)
+    local is_nose_in = diff < 0.125
+
+    if RiftRail.DEBUG_MODE_ENABLED then
+        log_tp("方向计算: 车厢=" .. string.format("%.2f", current_ori) .. ", 入口=" .. entry_shell_ori .. ", 判定=" .. (is_nose_in and "顺向(NoseIn)" or "逆向(TailIn)"))
+    end
+
+    -- 3. 计算出口基准朝向
+    local exit_base_ori = exit_geo_dir / 16.0
+    local target_ori = exit_base_ori
+
+    -- 4. 根据进出关系修正最终朝向
+    if not is_nose_in then
+        -- 逆向进入 -> 逆向离开 (翻转 180 度即 +0.5)
+        target_ori = (target_ori + 0.5) % 1.0
+    end
+
+    if RiftRail.DEBUG_MODE_ENABLED and not is_nose_in then
+        log_tp("方向计算: 执行逆向翻转 -> " .. target_ori)
+    end
+
+    return target_ori
+end
+-- =================================================================================
+-- 【辅助函数】确保几何数据缓存有效 (去重逻辑)
+-- =================================================================================
+-- 参数：struct (传送门数据)
+-- 返回：有效的 geo 配置表
+local function ensure_geometry_cache(struct)
+    if not (struct and struct.shell and struct.shell.valid) then
+        return nil
+    end
+
+    local geo = struct.cached_geo
+    -- 检查缓存是否存在，且包含最新的字段 check_area_rel
+    if not geo or not geo.check_area_rel then
+        geo = GEOMETRY[struct.shell.direction] or GEOMETRY[0]
+        struct.cached_geo = geo
+    end
+    return geo
+end
+-- =================================================================================
+-- 【业务逻辑】尝试启动传送流程
+-- =================================================================================
+-- 参数：entry_struct (入口数据), carriage (触发的车厢实体)
+-- 返回：bool (是否成功启动)
+local function try_start_teleport(entry_struct, carriage)
+    -- 1. 模式检查
+    if entry_struct.mode ~= "entry" then
+        return false
+    end
+
+    -- 2. 配对检查
+    if not entry_struct.paired_to_id then
+        game.print({ "messages.rift-rail-error-unpaired-or-collider" })
+        return false
+    end
+
+    -- 3. 启动逻辑
+    if RiftRail.DEBUG_MODE_ENABLED then
+        log_tp("触发传送: 入口ID=" .. entry_struct.id .. ", 车厢=" .. carriage.name)
+    end
+
+    entry_struct.carriage_behind = carriage
+    entry_struct.is_teleporting = true
+
+    -- 4. 预计算出口几何缓存 (调用我们刚写的去重函数)
+    local exit_struct = State.get_struct_by_id(entry_struct.paired_to_id)
+    if exit_struct then
+        ensure_geometry_cache(exit_struct)
+    end
+
+    return true
+end
+-- =================================================================================
+-- 【独立函数】应用堵塞等待逻辑
+-- =================================================================================
+-- 功能：当检测到出口堵塞时，在入口列车当前位置插入一个临时等待站
+-- 参数：struct (入口建筑数据), train (入口列车对象)
+local function apply_congestion_wait(struct, train)
+    -- 1. 基础校验：必须是自动模式才需要处理
+    if not (train and train.valid and not train.manual_mode) then
+        return
+    end
+
+    -- 2. 获取必要的铁轨组件
+    -- 使用我们之前定义的辅助函数查找车站实体
+    local station_entity = find_child_entity(struct, "rift-rail-station")
+    if not (station_entity and station_entity.connected_rail) then
+        return
+    end
+
+    -- 3. 获取时刻表
+    local sched = train.schedule
+    if not (sched and sched.records) then
+        return
+    end
+
+    -- 4. 幂等性检查：防止重复插入
+    -- 检查当前正在前往/停靠的站点，是不是已经是我们要插的这个了
+    local current_record = sched.records[sched.current]
+    if current_record and current_record.rail == station_entity.connected_rail then
+        -- 已经在等待了，无需重复操作
+        return
+    end
+
+    -- 5. 执行插入逻辑
+    -- 在当前索引的下一位插入临时站，确保列车立即执行
+    table.insert(sched.records, sched.current + 1, {
+        rail = station_entity.connected_rail,
+        temporary = true,
+        wait_conditions = { { type = "time", ticks = 4294967295 } },
+    })
+
+    -- 6. 应用更改
+    train.schedule = sched
+    train.go_to_station(sched.current + 1)
+
+    -- 7. 调试日志
+    if RiftRail.DEBUG_MODE_ENABLED then
+        log_tp("堵塞处理: 已为列车 " .. train.id .. " 插入临时等待路障。")
+    end
+end
+
+-- =================================================================================
+-- 新增辅助函数 (代码提纯)
+-- =================================================================================
+-- =================================================================================
+-- 统一列车状态恢复函数
+-- =================================================================================
+local function restore_train_state(train, struct, apply_speed)
+    if not (train and train.valid) then
+        return
+    end
+
+    if RiftRail.DEBUG_MODE_ENABLED then
+        log_tp("状态恢复: TrainID=" .. train.id .. ", 恢复进度=" .. tostring(struct.saved_schedule_index ~= nil))
+    end
+
+    -- A. 恢复时刻表索引 (副作用：列车变为自动模式)
+    if struct.saved_schedule_index then
+        train.go_to_station(struct.saved_schedule_index)
+    end
+
+    -- B. 恢复手动/自动模式
+    train.manual_mode = struct.saved_manual_mode or false
+
+    -- C. (可选) 恢复速度
+    if apply_speed then
+        local speed_mag = 1.0
+        local sign = calculate_speed_sign(train, struct)
+        train.speed = speed_mag * sign
+
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("状态恢复: 速度重置为 " .. train.speed)
+        end
+    end
+end
+-- =================================================================================
 -- 专门用于在 on_load 中初始化的 SE 事件获取函数
+-- =================================================================================
 function Teleport.init_se_events()
     -- 确保 on_load 时也能拿到最新的日志函数
     if script.active_mods["space-exploration"] and remote.interfaces["space-exploration"] then
@@ -299,79 +534,13 @@ function Teleport.init_se_events()
         end
     end
 end
-
--- =================================================================================
--- Cybersyn 无 SE 模式下的数据迁移与时刻表修复
--- =================================================================================
-local function handle_cybersyn_migration(old_train_id, new_train, snapshot)
-    -- 如果装了 SE，这步不需要做，直接退出
-    if script.active_mods["space-exploration"] then
-        return
-    end
-    if not (snapshot and new_train and new_train.valid) then
-        return
-    end
-
-    if remote.interfaces["cybersyn"] and remote.interfaces["cybersyn"]["write_global"] then
-        -- 1. 更新实体引用
-        snapshot.entity = new_train
-
-        -- 2. 注入数据到新 ID
-        remote.call("cybersyn", "write_global", snapshot, "trains", new_train.id)
-
-        -- 3. 清除旧 ID 数据 (Cybersyn 会自动清，但手动清更安全)
-        remote.call("cybersyn", "write_global", nil, "trains", old_train_id)
-
-        -- 4. 清除 "正在传送" 标签
-        remote.call("cybersyn", "write_global", nil, "trains", new_train.id, "se_is_being_teleported")
-    end
-
-    -- 5. 时刻表 Rail 补全 (修复异地表 Rail 指向问题)
-    local schedule = new_train.schedule
-    if schedule and schedule.records then
-        local records = schedule.records
-        local current_index = schedule.current
-        local current_record = records[current_index]
-
-        -- 只有当下一站是真实操作站 (P/R/Depot) 且没有 Rail 时才尝试补全
-        if current_record and current_record.station and not current_record.rail then
-            local target_id = nil
-            -- 状态映射: 1=TO_P, 3=TO_R, 5=TO_D
-            if snapshot.status == 1 then
-                target_id = snapshot.p_station_id
-            end
-            if snapshot.status == 3 then
-                target_id = snapshot.r_station_id
-            end
-            if snapshot.status == 5 or snapshot.status == 6 then
-                target_id = snapshot.depot_id
-            end
-
-            if target_id then
-                local table_name = (snapshot.status == 5 or snapshot.status == 6) and "depots" or "stations"
-                local st_data = remote.call("cybersyn", "read_global", table_name, target_id)
-
-                -- 如果目标站在当前地表，插入 Rail 导航点
-                if st_data and st_data.entity_stop and st_data.entity_stop.valid and st_data.entity_stop.surface == new_train.front_stock.surface then
-                    table.insert(records, current_index, {
-                        rail = st_data.entity_stop.connected_rail,
-                        rail_direction = st_data.entity_stop.connected_rail_direction,
-                        temporary = true,
-                        wait_conditions = { { type = "time", ticks = 1 } },
-                    })
-                    schedule.records = records
-                    new_train.schedule = schedule
-                end
-            end
-        end
-    end
-end
-
 -- =================================================================================
 -- 核心传送逻辑
 -- =================================================================================
 
+-- =================================================================================
 -- 结束传送：清理状态，恢复数据
+-- =================================================================================
 local function finish_teleport(entry_struct, exit_struct)
     if RiftRail.DEBUG_MODE_ENABLED then
         log_tp("传送结束: 清理状态 (入口ID: " .. entry_struct.id .. ", 出口ID: " .. exit_struct.id .. ")")
@@ -394,40 +563,19 @@ local function finish_teleport(entry_struct, exit_struct)
     end
 
     if final_train and final_train.valid then
-        -- 先恢复时刻表索引，后恢复模式
-        -- 注意：go_to_station 会强制设置列车为自动模式，所以必须先调用 go_to_station
-        -- 然后立即恢复 manual_mode，这样恢复的值才不会被覆盖
-        if exit_struct.saved_schedule_index then
-            final_train.go_to_station(exit_struct.saved_schedule_index)
-        end
+        -- [重构] 使用统一函数恢复状态 (参数 true 代表同时恢复速度)
+        restore_train_state(final_train, exit_struct, true)
 
-        -- 2. 恢复原始模式
-        -- go_to_station 已经把列车改成自动，现在恢复到之前的状态
-        final_train.manual_mode = exit_struct.saved_manual_mode or false
-
-        -- 3. 恢复速度 (已重构为距离比对法)
-        -- 不再恢复进站时的旧速度，而是保持传送时的弹射速度 (1.0)
-        -- 这样列车出站后会继续以高速滑行，符合视觉惯性
-        local speed_mag = 1.0
-
-        -- 调用calculate_speed_sign函数，以出口传送门为参考点
-        local required_sign = calculate_speed_sign(final_train, exit_struct)
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("【Finish】最终速度判定: ReqSign=" .. required_sign .. " | SpeedMag=" .. speed_mag)
-        end
-        final_train.speed = speed_mag * required_sign
-
-        -- 数据恢复 (注入灵魂)
-        if exit_struct.old_train_id and exit_struct.cybersyn_snapshot then
-            handle_cybersyn_migration(exit_struct.old_train_id, final_train, exit_struct.cybersyn_snapshot)
+        -- [重构] 触发 Cybersyn 完成钩子 (自动处理数据恢复)
+        if CybersynCompat and exit_struct.old_train_id then
+            CybersynCompat.on_teleport_end(final_train, exit_struct.old_train_id, exit_struct.cybersyn_snapshot)
             exit_struct.cybersyn_snapshot = nil
         end
 
         -- 4. SE 事件触发 (Finished)
         if SE_TELEPORT_FINISHED_EVENT_ID and exit_struct.old_train_id then
             if RiftRail.DEBUG_MODE_ENABLED then
-                log_tp("【DEBUG】准备触发 FINISHED 事件: new_train_id = " .. tostring(final_train.id) .. ", old_train_id = " .. tostring(exit_struct.old_train_id))
-                log_tp("SE 兼容: 触发 on_train_teleport_finished")
+                log_tp("SE兼容触发 on_train_teleport_finished 事件: new_train_id = " .. tostring(final_train.id) .. ", old_train_id = " .. tostring(exit_struct.old_train_id))
             end
             script.raise_event(SE_TELEPORT_FINISHED_EVENT_ID, {
                 train = final_train,
@@ -453,7 +601,6 @@ local function finish_teleport(entry_struct, exit_struct)
     exit_struct.carriage_ahead = nil
     exit_struct.old_train_id = nil
     exit_struct.cached_geo = nil
-    -- 清理本次传送记录的峰值速度，防止其“污染”下一次传送
     exit_struct.final_train_speed = nil
 
     -- 6. 【关键】标记需要重建入口碰撞器
@@ -467,7 +614,9 @@ local function finish_teleport(entry_struct, exit_struct)
     end
 end
 
+-- =================================================================================
 -- 传送下一节车厢 (由 on_tick 驱动)
+-- =================================================================================
 function Teleport.teleport_next(entry_struct, exit_struct)
     -- 必须在 entry_struct.carriage_ahead 被后续逻辑更新之前记录下来
     local is_first_carriage = (entry_struct.carriage_ahead == nil)
@@ -492,40 +641,19 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     end
 
     -- 检查出口是否堵塞
-    -- 优先从缓存读取，如果缓存不存在 (如读档后)，则现场计算一次并存入缓存
-    local geo = exit_struct.cached_geo
+    -- [重构] 使用统一函数获取缓存
+    local geo = ensure_geometry_cache(exit_struct)
     if not geo then
-        -- 如果 geo 是 nil，说明缓存未命中，立即计算并写入
-        geo = GEOMETRY[exit_struct.shell.direction] or GEOMETRY[0]
-        exit_struct.cached_geo = geo
-    end
+        return
+    end -- 保护性检查
     local spawn_pos = Util.vectors_add(exit_struct.shell.position, geo.spawn_offset)
 
     -- 动态生成出口检测区域 (宽度修正为2)
-    local check_area = {}
-    local dir = exit_struct.shell.direction
-
-    if dir == 0 then -- North (出口在下)
-        check_area = {
-            left_top = { x = spawn_pos.x - 1, y = spawn_pos.y },
-            right_bottom = { x = spawn_pos.x + 1, y = spawn_pos.y + 10 },
-        }
-    elseif dir == 8 then -- South (出口在上)
-        check_area = {
-            left_top = { x = spawn_pos.x - 1, y = spawn_pos.y - 10 },
-            right_bottom = { x = spawn_pos.x + 1, y = spawn_pos.y },
-        }
-    elseif dir == 4 then -- East (出口在左)
-        check_area = {
-            left_top = { x = spawn_pos.x - 10, y = spawn_pos.y - 1 },
-            right_bottom = { x = spawn_pos.x, y = spawn_pos.y + 1 },
-        }
-    elseif dir == 12 then -- West (出口在右)
-        check_area = {
-            left_top = { x = spawn_pos.x, y = spawn_pos.y - 1 },
-            right_bottom = { x = spawn_pos.x + 10, y = spawn_pos.y + 1 },
-        }
-    end
+    -- [重构] 动态生成出口检测区域 (使用配置表)
+    local check_area = {
+        left_top = Util.vectors_add(spawn_pos, geo.check_area_rel.lt),
+        right_bottom = Util.vectors_add(spawn_pos, geo.check_area_rel.rb),
+    }
 
     -- 如果前面有车 (carriage_ahead)，说明正在传送中，不需要检查堵塞 (我们是接在它后面的)
     -- 只有当 carriage_ahead 为空 (第一节) 时才检查堵塞
@@ -545,48 +673,11 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         if RiftRail.DEBUG_MODE_ENABLED then
             log_tp("出口堵塞，暂停传送...")
         end
-        if carriage.train and not carriage.train.manual_mode then
-            local sched = carriage.train.get_schedule()
-            if not sched then
-                return
-            end
 
-            local station_entity = nil
-            if entry_struct.children then
-                for _, child_data in pairs(entry_struct.children) do
-                    -- 从子数据表中取出 entity 对象，因为 children 存的是 {entity=..., ...}
-                    local child = child_data.entity
-                    if child and child.valid and child.name == "rift-rail-station" then
-                        station_entity = child
-                        break
-                    end
-                end
-            end
+        -- [重构] 调用独立函数处理等待逻辑
+        apply_congestion_wait(entry_struct, carriage.train)
 
-            if not (station_entity and station_entity.connected_rail) then
-                return
-            end
-
-            local current_record = sched.get_record({ schedule_index = sched.current })
-
-            if not (current_record and current_record.rail and current_record.rail == station_entity.connected_rail) then
-                -- 将所有参数合并到一个表中直接传递
-                sched.add_record({
-                    -- 描述站点本身的字段
-                    rail = station_entity.connected_rail,
-                    temporary = true,
-                    wait_conditions = { { type = "time", ticks = 1111111 } },
-
-                    -- 描述插入位置的字段
-                    index = { schedule_index = sched.current + 1 },
-                })
-                carriage.train.go_to_station(sched.current + 1)
-                if RiftRail.DEBUG_MODE_ENABLED then
-                    log_tp("已插入临时路障站点。")
-                end
-            end
-        end
-        return
+        return -- 必须返回，中断传送
     end
 
     -- 动态拼接检测
@@ -634,18 +725,9 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         exit_struct.saved_speed = carriage.train.speed
         exit_struct.old_train_id = carriage.train.id
 
-        -- 免死金牌 (无条件生效)
-        if remote.interfaces["cybersyn"] then
-            -- 打标签：告诉 Cybersyn 别删
-            remote.call("cybersyn", "write_global", true, "trains", carriage.train.id, "se_is_being_teleported")
-
-            -- 只有在无 SE 时才需要存快照
-            if not script.active_mods["space-exploration"] then
-                local _, snap = pcall(remote.call, "cybersyn", "read_global", "trains", carriage.train.id)
-                if snap then
-                    exit_struct.cybersyn_snapshot = snap
-                end
-            end
+        -- [重构] 触发模组开始钩子 (自动处理标签和快照)
+        if CybersynCompat then
+            exit_struct.cybersyn_snapshot = CybersynCompat.on_teleport_start(carriage.train)
         end
 
         -- [SE] Started 事件
@@ -662,50 +744,12 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         end
     end
 
-    -- 计算车厢生成朝向 (纯 Orientation 版)
-    -- 1. 获取入口建筑的"深入向量"朝向 (转为 0.0-1.0)
-    -- entry_struct.shell.direction 是 0, 4, 8, 12 (16向系统)
-    local entry_shell_ori = entry_struct.shell.direction / 16.0
+    -- [重构] 计算目标朝向
+    -- 参数：入口方向, 出口几何预设方向, 车厢当前方向
+    local target_ori = calculate_arrival_orientation(entry_struct.shell.direction, geo.direction, carriage.orientation)
 
-    -- 2. 获取车厢当前的绝对朝向 (0.0 - 1.0)
-    local carriage_ori = carriage.orientation
-
-    -- 3. 计算角度差，判断是否"顺向" (头朝死胡同)
-    local diff = math.abs(carriage_ori - entry_shell_ori)
-    if diff > 0.5 then
-        diff = 1.0 - diff
-    end
-    local is_nose_in = diff < 0.125
-    if RiftRail.DEBUG_MODE_ENABLED then
-        log_tp("方向计算: 车厢ori=" .. carriage_ori .. ", 建筑ori=" .. entry_shell_ori .. ", 判定=" .. (is_nose_in and "顺向" or "逆向"))
-    end
-    -- 1. 提前计算目标朝向 (target_ori)
-    local exit_base_ori = geo.direction / 16.0
-    local target_ori = exit_base_ori
-
-    if not is_nose_in then
-        -- 逆向进入 -> 逆向离开 (翻转 180 度)
-        target_ori = (target_ori + 0.5) % 1.0
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("方向计算: 逆向翻转 (Ori " .. exit_base_ori .. " -> " .. target_ori .. ")")
-        end
-    else
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("方向计算: 顺向保持 (Ori " .. target_ori .. ")")
-        end
-    end
-
-    -- 直接使用上面算好的 target_ori 进行生成
-    -- 生成新车厢
-    local new_carriage = exit_struct.surface.create_entity({
-        name = carriage.name,
-        position = spawn_pos,
-        -- 不再使用 direction，改用 orientation
-        -- 这样引擎会直接接受准确的角度，不再需要猜测是8向还是16向
-        orientation = target_ori,
-        force = carriage.force,
-        quality = carriage.quality,
-    })
+    -- [重构] 使用克隆工厂一键生成
+    local new_carriage = spawn_cloned_carriage(carriage, exit_struct.surface, spawn_pos, target_ori)
 
     if not new_carriage then
         if RiftRail.DEBUG_MODE_ENABLED then
@@ -713,37 +757,6 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         end
         finish_teleport(entry_struct, exit_struct)
         return
-    end
-
-    -- 转移内容 (调用 Util)
-    Util.transfer_all_inventories(carriage, new_carriage)
-    Util.transfer_fluids(carriage, new_carriage)
-    Util.transfer_equipment_grid(carriage, new_carriage)
-    new_carriage.health = carriage.health
-    new_carriage.backer_name = carriage.backer_name or ""
-    if carriage.color then
-        new_carriage.color = carriage.color
-    end
-
-    -- 如果之前保存了进度，说明这是后续车厢，立刻把被重置的索引改回去
-    if saved_ahead_index then
-        new_carriage.train.go_to_station(saved_ahead_index)
-    end
-
-    -- 司机转移逻辑
-    local driver = carriage.get_driver()
-    if driver then
-        carriage.set_driver(nil) -- 第一步：必须先从旧车“下车”，防止被留在入口
-
-        if driver.object_name == "LuaPlayer" then
-            -- 第二步：如果是玩家，直接 Set Driver
-            -- 引擎会自动处理物理传送，且不会破坏远程驾驶的视点
-            new_carriage.set_driver(driver)
-        elseif driver.valid and driver.teleport then
-            -- 第三步：如果是 NPC (如 AAI 矿车司机)，需要手动传送坐标
-            driver.teleport(new_carriage.position, new_carriage.surface)
-            new_carriage.set_driver(driver)
-        end
     end
 
     -- 转移时刻表与保存索引
@@ -763,25 +776,10 @@ function Teleport.teleport_next(entry_struct, exit_struct)
         -- 3. 保存新火车的时刻表索引 (解决重置问题)
         -- transfer_schedule 内部已经调用了 go_to_station，所以现在的 current 是正确的下一站
 
-        -- [LTN] 在以下任一条件下执行本地重指派与临时站插入：
-        --   1) 未安装 SE；或
-        --   2) 安装了 SE 但未安装 se-ltn-glue（无第三方接管时需要我们兜底）。
-        local need_local_ltn_reassign = remote.interfaces["logistic-train-network"] and exit_struct.old_train_id and (not script.active_mods["space-exploration"] or (script.active_mods["space-exploration"] and not script.active_mods["se-ltn-glue"]))
-
-        if need_local_ltn_reassign then
-            local ok, has_delivery = pcall(remote.call, "logistic-train-network", "reassign_delivery", exit_struct.old_train_id, new_carriage.train)
-            if ok and has_delivery then
-                local insert_index = remote.call("logistic-train-network", "get_or_create_next_temp_stop", new_carriage.train)
-                if insert_index ~= nil then
-                    local sched = new_carriage.train.get_schedule()
-                    if sched and (sched.current > insert_index) then
-                        sched.go_to_station(insert_index)
-                    end
-                end
-                if RiftRail.DEBUG_MODE_ENABLED then
-                    log_tp("LTN兼容: 已重指派交付并插入临时站（本地兜底）。")
-                end
-            end
+        -- [重构] 触发 LTN 到达钩子 (自动处理重指派)
+        -- 注意：LTN 比较特殊，通常需要在生成第一节车后立刻指派，以支持后续的时刻表操作
+        if LtnCompat then
+            LtnCompat.on_teleport_end(new_carriage.train, exit_struct.old_train_id)
         end
     end
 
@@ -829,18 +827,8 @@ function Teleport.teleport_next(entry_struct, exit_struct)
     -- 无论是否为第一节车，只要发生了拼接，引擎都会重置列车状态为手动。
     -- 所以必须对每一节新车都执行"先恢复进度，再恢复模式"的操作。
     -- =========================================================================
-    if new_carriage.train and new_carriage.train.valid then
-        -- 1. 恢复时刻表进度 (副作用：列车会被强制切换为自动模式)
-        -- 注意：saved_schedule_index 是在第一节车处理时保存的，后续车厢直接复用
-        if exit_struct.saved_schedule_index then
-            new_carriage.train.go_to_station(exit_struct.saved_schedule_index)
-        end
-
-        -- 2. 恢复原始模式
-        -- 如果原来是手动(true)，这里会把它切回手动 -> 引导车强拉
-        -- 如果原来是自动(false)，这里保持自动 -> 遵守红绿灯
-        new_carriage.train.manual_mode = exit_struct.saved_manual_mode or false
-    end
+    -- [重构] 状态一致性维护 (参数 false 代表此处暂不重置速度，交给 manage_speed 控制)
+    restore_train_state(new_carriage.train, exit_struct, false)
 
     -- 2. 准备下一节 (简化版：只更新指针，不再生成引导车)
     if next_carriage and next_carriage.valid then
@@ -893,61 +881,33 @@ function Teleport.on_collider_died(event)
         return
     end
 
-    -- 2. 模式检查
-    -- 只有入口模式响应
-    if struct.mode ~= "entry" then
-        struct.collider_needs_rebuild = true
-        add_to_active(struct)
-        return
-    end
+    -- 2. 无论发生什么，碰撞器死了就必须重建
+    struct.collider_needs_rebuild = true
 
-    -- 3. 配对检查
-    if not struct.paired_to_id then
-        game.print({ "messages.rift-rail-error-unpaired-or-collider" })
-        struct.collider_needs_rebuild = true
-        add_to_active(struct)
-        return
-    end
-
-    -- 4. 捕获火车
-    local train = nil
+    -- 3. 尝试捕获肇事车辆
+    local carriage = nil
     if event.cause and event.cause.train then
-        train = event.cause.train
+        -- 如果是火车撞的，直接取肇事车厢
+        carriage = event.cause
     else
-        -- 搜索附近的火车
+        -- 否则搜索附近的火车车厢 (半径3)
         local cars = entity.surface.find_entities_filtered({
             type = { "locomotive", "cargo-wagon", "fluid-wagon", "artillery-wagon" },
             position = entity.position,
-            radius = 4,
+            radius = 3,
+            limit = 1,
         })
         if cars[1] then
-            train = cars[1].train
+            carriage = cars[1]
         end
     end
 
-    -- 逻辑分流与入队
-    if not train then
-        -- 情况 A: 没有火车（被虫子咬了，或者非火车撞击），只需重建
-        struct.collider_needs_rebuild = true
-    else
-        -- 情况 B: 有火车，触发传送逻辑
-        if RiftRail.DEBUG_MODE_ENABLED then
-            log_tp("触发传送检测: 入口ID=" .. struct.id .. ", 火车ID=" .. train.id)
-        end
-
-        -- 优先用撞击者作为第一节
-        struct.carriage_behind = event.cause or train.front_stock
-        struct.is_teleporting = true
-
-        -- 预计算并缓存出口的几何数据，避免在 teleport_next 中重复计算
-        -- 仅在触发传送时计算一次
-        local exit_struct = State.get_struct_by_id(struct.paired_to_id)
-        if exit_struct and exit_struct.shell and exit_struct.shell.valid then
-            exit_struct.cached_geo = GEOMETRY[exit_struct.shell.direction] or GEOMETRY[0]
-        end
+    -- 4. 如果有车，尝试启动传送 (调用解耦后的逻辑)
+    if carriage then
+        try_start_teleport(struct, carriage)
     end
 
-    -- 使用辅助函数添加到活跃列表
+    -- 5. 入队 (无论是重建还是传送，都需要 tick 驱动)
     add_to_active(struct)
 end
 
@@ -1031,106 +991,110 @@ function Teleport.manage_speed(struct)
 end
 
 -- =================================================================================
+-- 【独立任务】处理碰撞器重建
+-- =================================================================================
+local function process_rebuild_collider(struct)
+    if not (struct.shell and struct.shell.valid) then
+        return
+    end
+
+    -- 1. 查表获取偏移
+    local geo = GEOMETRY[struct.shell.direction] or GEOMETRY[0]
+
+    -- 2. 计算绝对坐标
+    local final_pos = Util.vectors_add(struct.shell.position, geo.collider_offset)
+
+    -- 3. 创建实体碰撞器
+    local new_collider = struct.surface.create_entity({
+        name = "rift-rail-collider",
+        position = final_pos,
+        force = struct.shell.force,
+    })
+
+    -- 4. 将新碰撞器同步回 children 列表
+    if new_collider and struct.children then
+        -- 清理旧引用 (倒序)
+        for i = #struct.children, 1, -1 do
+            local child_data = struct.children[i]
+            if child_data and child_data.entity and (not child_data.entity.valid or child_data.entity.name == "rift-rail-collider") then
+                table.remove(struct.children, i)
+            end
+        end
+
+        -- 注册新引用
+        table.insert(struct.children, {
+            entity = new_collider,
+            relative_pos = geo.collider_offset, -- 直接复用查表结果
+        })
+    end
+
+    -- 5. 标记完成
+    struct.collider_needs_rebuild = false
+end
+
+-- =================================================================================
+-- 【独立任务】处理传送序列步进
+-- =================================================================================
+local function process_teleport_sequence(struct, tick)
+    -- 频率控制：每 4 tick 一次 (分散负载)
+    if tick % 4 ~= struct.unit_number % 4 then
+        return
+    end
+
+    if struct.carriage_behind then
+        -- 还有车厢，继续传送
+        local exit_struct = State.get_struct_by_id(struct.paired_to_id)
+        Teleport.teleport_next(struct, exit_struct)
+    else
+        -- 没有后续车厢，传送结束
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_tp("传送序列正常结束，关闭状态。")
+        end
+        struct.is_teleporting = false
+    end
+end
+-- =================================================================================
 -- Tick 调度 (GC 优化版)
 -- =================================================================================
 
 function Teleport.on_tick(event)
-    -- [优化] 直接遍历有序列表，不再每帧创建表和排序
-    -- 使用倒序遍历，这样在循环中安全移除元素不会影响后续索引
+    -- [优化] 直接遍历有序列表
     local list = storage.active_teleporter_list or {}
 
     for i = #list, 1, -1 do
         local struct = list[i]
 
-        -- [保护] 确保数据还在 (防止被其他脚本意外删除)
+        -- [保护] 确保数据有效
         if struct and struct.shell and struct.shell.valid then
-            -- A. 重建碰撞器逻辑
+            -- 任务 A: 重建碰撞器
             if struct.collider_needs_rebuild then
-                if struct.shell and struct.shell.valid then
-                    -- [还原] 根据建筑方向实时计算偏移量
-                    local dir = struct.shell.direction
-                    local offset = { x = 0, y = 0 }
+                process_rebuild_collider(struct)
+            end
 
-                    if dir == 0 then
-                        offset = { x = 0, y = -2 } -- North
-                    elseif dir == 4 then
-                        offset = { x = 2, y = 0 } -- East
-                    elseif dir == 8 then
-                        offset = { x = 0, y = 2 } -- South
-                    elseif dir == 12 then
-                        offset = { x = -2, y = 0 } -- West
-                    end
+            -- 任务 B: 传送逻辑
+            if struct.is_teleporting then
+                -- 1. 执行序列步进 (含频率控制)
+                process_teleport_sequence(struct, event.tick)
 
-                    -- 计算绝对坐标
-                    local final_pos = {
-                        x = struct.shell.position.x + offset.x,
-                        y = struct.shell.position.y + offset.y,
-                    }
-
-                    -- 创建实体碰撞器
-                    local new_collider = struct.surface.create_entity({
-                        name = "rift-rail-collider",
-                        position = final_pos,
-                        force = struct.shell.force,
-                    })
-
-                    -- 将新创建的碰撞器同步回 children 列表
-                    if new_collider and struct.children then
-                        -- 1. 清理掉列表中所有旧的、无效的 collider 引用
-                        for i = #struct.children, 1, -1 do
-                            local child_data = struct.children[i]
-                            if child_data and child_data.entity and (not child_data.entity.valid or child_data.entity.name == "rift-rail-collider") then
-                                table.remove(struct.children, i)
-                            end
-                        end
-
-                        -- 2. 计算新碰撞器的相对坐标
-                        local relative_pos = {
-                            x = final_pos.x - struct.shell.position.x,
-                            y = final_pos.y - struct.shell.position.y,
-                        }
-
-                        -- 3. 将新碰撞器注册到 children 列表中
-                        table.insert(struct.children, {
-                            entity = new_collider,
-                            relative_pos = relative_pos,
-                        })
-                    end
-
-                    -- 4. 标记完成
-                    struct.collider_needs_rebuild = false
+                -- 2. 持续动力控制 (每 tick 都要执行，保持吸附力)
+                -- 只有当状态依然是 teleporting 时才执行 (防止刚刚 sequence 结束了)
+                if struct.is_teleporting then
+                    Teleport.manage_speed(struct)
                 end
             end
 
-            -- B. 执行传送序列
-            if struct.is_teleporting then
-                -- 频率控制：每 4 tick 一次
-                if event.tick % 4 == struct.unit_number % 4 then
-                    if struct.carriage_behind then
-                        -- [关键] 查找出口并将 exit_struct 作为参数传入
-                        local exit_struct = State.get_struct_by_id(struct.paired_to_id)
-                        Teleport.teleport_next(struct, exit_struct)
-                    else
-                        if RiftRail.DEBUG_MODE_ENABLED then
-                            log_tp("传送序列正常结束，关闭状态。")
-                        end
-                        struct.is_teleporting = false
-                    end
-                end
-            end
-
-            -- C. 持续动力
-            if struct.is_teleporting then
-                Teleport.manage_speed(struct)
-            end
-
-            -- 出队检查 (使用辅助函数移除)
+            -- 出队检查
             if not struct.is_teleporting and not struct.collider_needs_rebuild then
-                remove_from_active(struct)
+                -- 从活跃列表移除
+                storage.active_teleporters[struct.unit_number] = nil
+                table.remove(list, i)
             end
         else
-            -- 结构无效，直接移除
-            remove_from_active(struct)
+            -- 结构无效，直接清理
+            if struct and struct.unit_number then
+                storage.active_teleporters[struct.unit_number] = nil
+            end
+            table.remove(list, i)
         end
     end
 end

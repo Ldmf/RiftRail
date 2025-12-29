@@ -76,6 +76,9 @@ if Teleport.init then
         Util = Util,
         Schedule = Schedule,
         log_debug = log_debug,
+        -- [新增] 注入兼容模块，用于生命周期钩子调用
+        CybersynCompat = CybersynSE,
+        LtnCompat = LTN,
     })
 end
 
@@ -588,6 +591,52 @@ script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
         settings.global["rift-rail-reset-colliders"] = { value = false }
 
         game.print({ "messages.rift-rail-colliders-reset" })
+
+    -- 监听卸载清理开关
+    elseif event.setting == "rift-rail-uninstall-cleanup" and settings.global["rift-rail-uninstall-cleanup"].value then
+        -- 1. 遍历所有建筑数据
+        local count_cs = 0
+        local count_ltn = 0
+
+        if storage.rift_rails then
+            for _, struct in pairs(storage.rift_rails) do
+                -- A. 清理 Cybersyn 连接
+                -- 只要标记为 enabled，或者为了保险起见，我们都尝试调用销毁逻辑
+                -- on_portal_destroyed 内部会处理断开连接或紧急清理自身 ID
+                if struct.cybersyn_enabled and CybersynSE.on_portal_destroyed then
+                    CybersynSE.on_portal_destroyed(struct)
+                    -- 强制把内存状态设为 false，虽然数据马上要被删了，但保持一致性
+                    struct.cybersyn_enabled = false
+                    count_cs = count_cs + 1
+                end
+
+                -- B. 清理 LTN 连接
+                if struct.ltn_enabled and LTN.on_portal_destroyed then
+                    LTN.on_portal_destroyed(struct)
+                    struct.ltn_enabled = false
+                    count_ltn = count_ltn + 1
+                end
+            end
+        end
+
+        -- 2. 检查是否有正在传送的列车 (仅做安全提示)
+        local active_count = storage.active_teleporter_list and #storage.active_teleporter_list or 0
+        if active_count > 0 then
+            game.print({ "messages.rift-rail-warning-active-teleport-during-cleanup", active_count })
+            if RiftRail.DEBUG_MODE_ENABLED then
+                log_debug("警告: 在清理期间检测到 " .. active_count .. " 个活跃传送进程。")
+            end
+        end
+
+        -- 3. 自复位开关
+        settings.global["rift-rail-uninstall-cleanup"] = { value = false }
+
+        -- 4. 反馈结果
+        game.print({ "messages.rift-rail-uninstall-complete", count_cs, count_ltn })
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_debug("卸载清理完成: Cybersyn=" .. count_cs .. ", LTN=" .. count_ltn)
+        end
+
         -- 监听调试模式的变更
     elseif event.setting == "rift-rail-debug-mode" then
         RiftRail.DEBUG_MODE_ENABLED = settings.global["rift-rail-debug-mode"].value
@@ -773,6 +822,9 @@ remote.add_interface("RiftRail", {
 
         6. 查找幽灵数据报告:
         /c game.print(serpent.block(remote.call("RiftRail", "debug_storage", "find_ghosts")))
+
+        7. 查询活跃列表长度:
+        /c game.print(remote.call("RiftRail", "debug_storage", "active_count"))
     ]]
     debug_storage = function(key, param, player_index)
         -- 内部辅助函数，用于获取 struct (保持不变)
@@ -816,6 +868,9 @@ remote.add_interface("RiftRail", {
                 end
             end
             return "Total Rift Rails in storage: " .. count
+        elseif key == "active_count" then
+            -- [新增] 查询活跃列表长度
+            return storage.active_teleporter_list and #storage.active_teleporter_list or 0
         elseif key == "size" then
             if storage.rift_rails then
                 local data_string = serpent.block(storage.rift_rails)

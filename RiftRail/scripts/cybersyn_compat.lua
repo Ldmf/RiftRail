@@ -298,4 +298,148 @@ function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
     end
 end
 
+-- ============================================================================
+-- [新增] 传送生命周期钩子 (策略模式)
+-- ============================================================================
+
+-- 1. 定义具体的逻辑实现
+
+-- 逻辑 A: 完整模式 (无 SE) - 贴标签 + 存快照
+local function logic_on_start_full(train)
+    if not (train and train.valid) then
+        return nil
+    end
+    -- 贴标签: 防止被 Cybersyn 误判丢失
+    if remote.interfaces["cybersyn"] then
+        remote.call("cybersyn", "write_global", true, "trains", train.id, "se_is_being_teleported")
+    end
+    -- 存快照: 手动读取数据
+    if remote.interfaces["cybersyn"] then
+        local success, snapshot = pcall(remote.call, "cybersyn", "read_global", "trains", train.id)
+        if success then
+            if RiftRail.DEBUG_MODE_ENABLED then
+                log_cs("Cybersyn兼容: 已保存列车快照 ID=" .. train.id)
+            end
+            return snapshot
+        end
+    end
+    return nil
+end
+
+-- 逻辑 B: 轻量模式 (有 SE) - 只贴标签
+local function logic_on_start_tag_only(train)
+    if not (train and train.valid) then
+        return nil
+    end
+    -- 即使有 SE，也要贴标签作为双重保险
+    if remote.interfaces["cybersyn"] then
+        remote.call("cybersyn", "write_global", true, "trains", train.id, "se_is_being_teleported")
+    end
+    -- 不返回快照，后续交给 SE 事件处理
+    return nil
+end
+
+-- 逻辑 C: 恢复模式 (无 SE) - 注入快照 + 撕标签
+local function logic_on_end_restore(new_train, old_id, snapshot)
+    if not (new_train and new_train.valid and snapshot) then
+        return
+    end
+
+    if remote.interfaces["cybersyn"] then
+        -- 1. 注入数据到新 ID
+        -- 注意：快照中的 entity 还是旧的，Cybersyn 内部通常只用 ID 索引，或者我们需要更新 entity 引用
+        -- 但根据旧代码，直接写入 snapshot 即可，Cybersyn 会处理
+        snapshot.entity = new_train -- 修正实体引用
+        remote.call("cybersyn", "write_global", snapshot, "trains", new_train.id)
+
+        -- 2. 清除旧 ID 数据 (手动 GC)
+        if old_id then
+            remote.call("cybersyn", "write_global", nil, "trains", old_id)
+        end
+
+        -- 3. 撕掉新车身上的标签 (恢复监管)
+        remote.call("cybersyn", "write_global", nil, "trains", new_train.id, "se_is_being_teleported")
+
+        -- [新增] 4. 时刻表 Rail 补全 (修复异地表 Rail 指向问题)
+        -- 逻辑来源：原 handle_cybersyn_migration
+        local schedule = new_train.schedule
+        if schedule and schedule.records then
+            local records = schedule.records
+            local current_index = schedule.current
+            local current_record = records[current_index]
+
+            -- 只有当下一站是真实操作站 (P/R/Depot) 且没有 Rail 时才尝试补全
+            -- (如果有 Rail 说明已经是精准导航了，不需要我们干预)
+            if current_record and current_record.station and not current_record.rail then
+                local target_id = nil
+
+                -- Cybersyn 状态映射: 1=去供货站(P), 3=去请求站(R), 5/6=去车库(Depot)
+                if snapshot.status == 1 then
+                    target_id = snapshot.p_station_id
+                elseif snapshot.status == 3 then
+                    target_id = snapshot.r_station_id
+                elseif snapshot.status == 5 or snapshot.status == 6 then
+                    target_id = snapshot.depot_id
+                end
+
+                if target_id then
+                    -- 确定查询表名 (depots 或 stations)
+                    local table_name = (snapshot.status == 5 or snapshot.status == 6) and "depots" or "stations"
+
+                    -- 从 Cybersyn 数据库读取目标站点的真实物理信息
+                    local ok, st_data = pcall(remote.call, "cybersyn", "read_global", table_name, target_id)
+
+                    -- 如果目标站在当前地表，插入 Rail 导航点
+                    if ok and st_data and st_data.entity_stop and st_data.entity_stop.valid and st_data.entity_stop.surface == new_train.front_stock.surface then
+                        -- 在当前目标前插入一个临时导航点，强制列车走这个 Rail
+                        table.insert(records, current_index, {
+                            rail = st_data.entity_stop.connected_rail,
+                            rail_direction = st_data.entity_stop.connected_rail_direction,
+                            temporary = true,
+                            wait_conditions = { { type = "time", ticks = 1 } }, -- 1 tick 即刻通过
+                        })
+                        schedule.records = records
+                        new_train.schedule = schedule
+
+                        if RiftRail.DEBUG_MODE_ENABLED then
+                            log_cs("Cybersyn兼容: 已修正时刻表导航 -> " .. st_data.entity_stop.backer_name)
+                        end
+                    end
+                end
+            end
+        end
+
+        if RiftRail.DEBUG_MODE_ENABLED then
+            log_cs("Cybersyn兼容: 数据迁移完成 -> 新ID=" .. new_train.id)
+        end
+    end
+end
+
+-- 空函数 (占位符)
+local function noop() end
+
+-- 2. 策略分发 (在加载时决定使用哪个函数)
+
+-- 默认初始化为空
+CybersynSE.on_teleport_start = noop
+CybersynSE.on_teleport_end = noop
+
+if script.active_mods["cybersyn"] then
+    if script.active_mods["space-exploration"] then
+        -- 情况: Cybersyn + SE
+        -- 开始: 只贴标签
+        -- 结束: 啥都不做 (SE事件接管)
+        CybersynSE.on_teleport_start = logic_on_start_tag_only
+        CybersynSE.on_teleport_end = noop
+        log_cs("Cybersyn兼容模式: SE 托管")
+    else
+        -- 情况: Cybersyn (无 SE)
+        -- 开始: 完整快照
+        -- 结束: 手动恢复
+        CybersynSE.on_teleport_start = logic_on_start_full
+        CybersynSE.on_teleport_end = logic_on_end_restore
+        log_cs("Cybersyn兼容模式: 手动迁移")
+    end
+end
+
 return CybersynSE

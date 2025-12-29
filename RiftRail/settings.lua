@@ -34,4 +34,14 @@ data:extend({
         localised_name = { "mod-setting-name.rift-rail-reset-colliders" },
         localised_description = { "mod-setting-description.rift-rail-reset-colliders" },
     },
+    -- [新增] 卸载准备/清理数据开关
+    {
+        type = "bool-setting",
+        name = "rift-rail-uninstall-cleanup",
+        setting_type = "runtime-global", -- 地图全局设置
+        default_value = false,
+        order = "z-c",                   -- 排在重置碰撞器之后
+        localised_name = { "mod-setting-name.rift-rail-uninstall-cleanup" },
+        localised_description = { "mod-setting-description.rift-rail-uninstall-cleanup" },
+    },
 })
