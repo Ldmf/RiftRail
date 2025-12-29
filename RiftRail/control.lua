@@ -133,9 +133,9 @@ local function on_mined_handler(event)
     -- 1. 先通知 Cybersyn 清理连接
     local entity = event.entity
     if entity and entity.valid then
-        local struct = State.get_struct(entity)
-        if struct then
-            CybersynSE.on_portal_destroyed(struct)
+        local portaldata = State.get_portaldata(entity)
+        if portaldata then
+            CybersynSE.on_portal_destroyed(portaldata)
         end
     end
     -- 2. 再执行原来的销毁逻辑
@@ -164,9 +164,9 @@ script.on_event(defines.events.on_entity_died, function(event)
         Teleport.on_collider_died(event)
     elseif entity.name == "rift-rail-entity" then
         -- 情况2: 建筑主体死亡 -> 触发拆除逻辑
-        local struct = State.get_struct(entity)
-        if struct then
-            CybersynSE.on_portal_destroyed(struct)
+        local portaldata = State.get_portaldata(entity)
+        if portaldata then
+            CybersynSE.on_portal_destroyed(portaldata)
         end
         Builder.on_destroy(event)
     end
@@ -225,7 +225,7 @@ script.on_event(defines.events.on_gui_opened, function(event)
         end
 
         -- 其他组件（外壳、核心等）继续保持拦截，打开自定义 GUI
-        if State.get_struct(entity) then
+        if State.get_portaldata(entity) then
             GUI.build_or_update(game.get_player(event.player_index), entity)
         end
     end
@@ -540,11 +540,11 @@ script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
 
         -- 2. 【重生】在正确位置重新生成
         if storage.rift_rails then
-            for _, struct in pairs(storage.rift_rails) do
-                if struct.shell and struct.shell.valid then
+            for _, portaldata in pairs(storage.rift_rails) do
+                if portaldata.shell and portaldata.shell.valid then
                     -- 只有入口和中立需要碰撞器
-                    if struct.mode == "entry" or struct.mode == "neutral" then
-                        local dir = struct.shell.direction
+                    if portaldata.mode == "entry" or portaldata.mode == "neutral" then
+                        local dir = portaldata.shell.direction
                         local offset = { x = 0, y = 0 }
 
                         -- 偏移量计算
@@ -559,30 +559,30 @@ script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
                         end
 
                         -- 获取新创建的 collider 实体
-                        local new_collider = struct.surface.create_entity({
+                        local new_collider = portaldata.surface.create_entity({
                             name = "rift-rail-collider",
-                            position = { x = struct.shell.position.x + offset.x, y = struct.shell.position.y + offset.y },
-                            force = struct.shell.force,
+                            position = { x = portaldata.shell.position.x + offset.x, y = portaldata.shell.position.y + offset.y },
+                            force = portaldata.shell.force,
                         })
 
                         -- 将新 collider 同步回 children 列表
-                        if new_collider and struct.children then
+                        if new_collider and portaldata.children then
                             -- 1. 清理旧的 collider 引用
-                            for i = #struct.children, 1, -1 do
-                                local child_data = struct.children[i]
+                            for i = #portaldata.children, 1, -1 do
+                                local child_data = portaldata.children[i]
                                 if child_data and child_data.entity and (not child_data.entity.valid or child_data.entity.name == "rift-rail-collider") then
-                                    table.remove(struct.children, i)
+                                    table.remove(portaldata.children, i)
                                 end
                             end
                             -- 2. 注册新的 collider
-                            table.insert(struct.children, {
+                            table.insert(portaldata.children, {
                                 entity = new_collider,
                                 relative_pos = offset, -- "offset" 就是我们刚算好的相对坐标
                             })
                         end
                     end
                     -- 重置标记
-                    struct.collider_needs_rebuild = false
+                    portaldata.collider_needs_rebuild = false
                 end
             end
         end
@@ -599,21 +599,21 @@ script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
         local count_ltn = 0
 
         if storage.rift_rails then
-            for _, struct in pairs(storage.rift_rails) do
+            for _, portaldata in pairs(storage.rift_rails) do
                 -- A. 清理 Cybersyn 连接
                 -- 只要标记为 enabled，或者为了保险起见，我们都尝试调用销毁逻辑
                 -- on_portal_destroyed 内部会处理断开连接或紧急清理自身 ID
-                if struct.cybersyn_enabled and CybersynSE.on_portal_destroyed then
-                    CybersynSE.on_portal_destroyed(struct)
+                if portaldata.cybersyn_enabled and CybersynSE.on_portal_destroyed then
+                    CybersynSE.on_portal_destroyed(portaldata)
                     -- 强制把内存状态设为 false，虽然数据马上要被删了，但保持一致性
-                    struct.cybersyn_enabled = false
+                    portaldata.cybersyn_enabled = false
                     count_cs = count_cs + 1
                 end
 
                 -- B. 清理 LTN 连接
-                if struct.ltn_enabled and LTN.on_portal_destroyed then
-                    LTN.on_portal_destroyed(struct)
-                    struct.ltn_enabled = false
+                if portaldata.ltn_enabled and LTN.on_portal_destroyed then
+                    LTN.on_portal_destroyed(portaldata)
+                    portaldata.ltn_enabled = false
                     count_ltn = count_ltn + 1
                 end
             end
@@ -661,24 +661,24 @@ script.on_configuration_changed(function(event)
     -- 1. 确保基础表结构存在
     State.ensure_storage()
 
-    -- 2. 【迁移】为旧存档构建 id_map 缓存
+    -- [迁移任务 1] 为旧存档构建 id_map 缓存 (v0.1 -> v0.2)
     if storage.rift_rails and next(storage.rift_rails) ~= nil and next(storage.rift_rail_id_map) == nil then
         log_debug("[Migration] 检测到旧存档，正在构建 id_map 缓存...")
-        for unit_number, struct in pairs(storage.rift_rails) do
-            storage.rift_rail_id_map[struct.id] = unit_number
+        for unit_number, portaldata in pairs(storage.rift_rails) do
+            storage.rift_rail_id_map[portaldata.id] = unit_number
         end
     end
 
-    -- 3. 【迁移】为旧建筑的 children 列表补充相对坐标
+    -- [迁移任务 2] 为旧建筑的 children 列表补充相对坐标 (v0.2 -> v0.3)
     if storage.rift_rails then
-        for _, struct in pairs(storage.rift_rails) do
+        for _, portaldata in pairs(storage.rift_rails) do
             -- 判断是否为需要修复的旧数据：检查第一个 child 是否是实体对象，而不是 table
-            if struct.children and #struct.children > 0 and struct.children[1].valid then
-                log_debug("[Migration] 正在修复建筑 ID " .. struct.id .. " 的 children 列表...")
+            if portaldata.children and #portaldata.children > 0 and portaldata.children[1].valid then
+                log_debug("[Migration] 正在修复建筑 ID " .. portaldata.id .. " 的 children 列表...")
                 local new_children = {}
-                if struct.shell and struct.shell.valid then
-                    local center_pos = struct.shell.position
-                    for _, child_entity in pairs(struct.children) do
+                if portaldata.shell and portaldata.shell.valid then
+                    local center_pos = portaldata.shell.position
+                    for _, child_entity in pairs(portaldata.children) do
                         if child_entity and child_entity.valid then
                             table.insert(new_children, {
                                 entity = child_entity,
@@ -689,18 +689,38 @@ script.on_configuration_changed(function(event)
                             })
                         end
                     end
-                    struct.children = new_children
+                    portaldata.children = new_children
                 end
             end
         end
     end
 
-    -- 4. 【迁移】GC优化相关的活跃列表
+    -- [迁移任务 3] 键名重构 (v0.3 -> v0.4)
+    -- 将旧的键名 carriage_ahead/behind 迁移到新的 exit_car/entry_car
+    if storage.rift_rails then
+        log_debug("[Migration] 开始执行存储键名迁移 (carriage -> car)...")
+        for _, portaldata in pairs(storage.rift_rails) do
+            -- 迁移 carriage_ahead -> exit_car
+            -- 检查：如果旧键存在，且新键不存在 (防止重复迁移)
+            if portaldata.carriage_ahead and not portaldata.exit_car then
+                portaldata.exit_car = portaldata.carriage_ahead
+                portaldata.carriage_ahead = nil -- [关键] 删除旧键，完成迁移
+            end
+
+            -- 迁移 carriage_behind -> entry_car
+            if portaldata.carriage_behind and not portaldata.entry_car then
+                portaldata.entry_car = portaldata.carriage_behind
+                portaldata.carriage_behind = nil -- [关键] 删除旧键
+            end
+        end
+    end
+
+    -- [迁移任务 4] GC优化相关的活跃列表 (v0.4 -> v0.5)
     if not storage.active_teleporter_list then
         storage.active_teleporter_list = {}
         if storage.active_teleporters then
-            for _, struct in pairs(storage.active_teleporters) do
-                table.insert(storage.active_teleporter_list, struct)
+            for _, portaldata in pairs(storage.active_teleporters) do
+                table.insert(storage.active_teleporter_list, portaldata)
             end
             table.sort(storage.active_teleporter_list, function(a, b)
                 return a.unit_number < b.unit_number
@@ -749,12 +769,12 @@ remote.add_interface("RiftRail", {
     -- 玩家传送逻辑：传送到当前建筑外部，而非配对目标
     teleport_player = function(player_index, portal_id)
         local player = game.get_player(player_index)
-        local struct = State.get_struct_by_id(portal_id)
+        local portaldata = State.get_portaldata_by_id(portal_id)
 
-        if player and struct and struct.shell and struct.shell.valid then
+        if player and portaldata and portaldata.shell and portaldata.shell.valid then
             -- 计算落点：位于建筑 "口子" 外面一点的位置，防止卡住
             -- 建筑中心到口子是 6 格，我们传送在 8 格的位置
-            local dir = struct.shell.direction
+            local dir = portaldata.shell.direction
             local offset = { x = 0, y = 0 }
 
             if dir == 0 then -- North (开口在下) -> 传送到上方
@@ -768,18 +788,18 @@ remote.add_interface("RiftRail", {
             end
 
             local target_pos = {
-                x = struct.shell.position.x + offset.x,
-                y = struct.shell.position.y + offset.y,
+                x = portaldata.shell.position.x + offset.x,
+                y = portaldata.shell.position.y + offset.y,
             }
 
             -- 尝试寻找附近的无碰撞位置 (防止传送到树或石头里)
-            local safe_pos = struct.shell.surface.find_non_colliding_position("character", target_pos, 5, 1)
+            local safe_pos = portaldata.shell.surface.find_non_colliding_position("character", target_pos, 5, 1)
             if not safe_pos then
                 safe_pos = target_pos
             end -- 如果找不到，强行传送
 
             -- 执行传送
-            player.teleport(safe_pos, struct.shell.surface)
+            player.teleport(safe_pos, portaldata.shell.surface)
 
             -- 强制查找并销毁 GUI，不再依赖事件监听
             if player.gui.screen.rift_rail_main_frame then
@@ -827,9 +847,9 @@ remote.add_interface("RiftRail", {
         /c game.print(remote.call("RiftRail", "debug_storage", "active_count"))
     ]]
     debug_storage = function(key, param, player_index)
-        -- 内部辅助函数，用于获取 struct (保持不变)
-        local function get_struct(struct_key, search_param)
-            if struct_key == "selected" then
+        -- 内部辅助函数，用于获取 portaldata (保持不变)
+        local function get_portaldata(portaldata_key, search_param)
+            if portaldata_key == "selected" then
                 if not player_index then
                     return "Error: 'selected' requires player context."
                 end
@@ -841,13 +861,13 @@ remote.add_interface("RiftRail", {
                 if not (selected and selected.valid) then
                     return "Error: No entity selected. Hover mouse over a Rift Rail building."
                 end
-                return State.get_struct(selected) or "Error: Selected entity is not a Rift Rail portal."
-            elseif struct_key == "get_by_id" then
+                return State.get_portaldata(selected) or "Error: Selected entity is not a Rift Rail portal."
+            elseif portaldata_key == "get_by_id" then
                 if not search_param then
                     return "Error: 'get_by_id' requires a custom ID parameter."
                 end
-                return State.get_struct_by_id(search_param) or "Error: Struct with custom ID " .. tostring(search_param) .. " not found."
-            elseif struct_key == "get_by_unit" then
+                return State.get_portaldata_by_id(search_param) or "Error: Struct with custom ID " .. tostring(search_param) .. " not found."
+            elseif portaldata_key == "get_by_unit" then
                 if not search_param then
                     return "Error: 'get_by_unit' requires a unit_number parameter."
                 end
@@ -883,14 +903,14 @@ remote.add_interface("RiftRail", {
             local report = {}
             local data_ghosts = {}
             local entity_ghosts = {}
-            local total_structs = 0
+            local total_portaldatas = 0
 
             -- 1. 查找"数据幽灵" (数据存在，实体已消失)
             if storage.rift_rails then
-                for unit_number, struct in pairs(storage.rift_rails) do
-                    total_structs = total_structs + 1
-                    if not (struct.shell and struct.shell.valid) then
-                        table.insert(data_ghosts, "Struct for unit_number " .. unit_number .. " (ID: " .. (struct.id or "N/A") .. ") has an invalid shell.")
+                for unit_number, portaldata in pairs(storage.rift_rails) do
+                    total_portaldatas = total_portaldatas + 1
+                    if not (portaldata.shell and portaldata.shell.valid) then
+                        table.insert(data_ghosts, "Struct for unit_number " .. unit_number .. " (ID: " .. (portaldata.id or "N/A") .. ") has an invalid shell.")
                     end
                 end
             end
@@ -911,9 +931,9 @@ remote.add_interface("RiftRail", {
             for _, surface in pairs(game.surfaces) do
                 for _, entity in pairs(surface.find_entities_filtered({ name = component_names })) do
                     total_components = total_components + 1
-                    if not State.get_struct(entity) then
+                    if not State.get_portaldata(entity) then
                         -- [修正] 对 entity.unit_number 进行安全转换，防止 simple-entity (如 collider) 因没有 unit_number 而报错
-                        table.insert(entity_ghosts, "Entity '" .. entity.name .. "' (Unit No: " .. tostring(entity.unit_number) .. ") at [gps=" .. entity.position.x .. "," .. entity.position.y .. "," .. entity.surface.name .. "] has no corresponding struct data.")
+                        table.insert(entity_ghosts, "Entity '" .. entity.name .. "' (Unit No: " .. tostring(entity.unit_number) .. ") at [gps=" .. entity.position.x .. "," .. entity.position.y .. "," .. entity.surface.name .. "] has no corresponding portaldata data.")
                     end
                 end
             end
@@ -921,7 +941,7 @@ remote.add_interface("RiftRail", {
 
             -- 3. 总结
             report["Summary"] = {
-                ["Total structs in storage"] = total_structs,
+                ["Total portaldatas in storage"] = total_portaldatas,
                 ["Total Rift Rail components in world"] = total_components, -- 修正了描述
                 ["Data ghosts found"] = #data_ghosts,
                 ["Entity ghosts found"] = #entity_ghosts,
@@ -929,7 +949,7 @@ remote.add_interface("RiftRail", {
 
             return report
         elseif key == "selected" or key == "get_by_id" or key == "get_by_unit" then
-            return get_struct(key, param)
+            return get_portaldata(key, param)
         end
 
         -- 更新可用键列表

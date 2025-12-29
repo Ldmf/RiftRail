@@ -26,10 +26,10 @@ local function is_cybersyn_active()
 end
 
 -- [新增] 辅助函数：从 RiftRail 结构体中提取车站实体
-local function get_station(struct)
-    if struct.children then
+local function get_station(portaldata)
+    if portaldata.children then
         -- 【修改】适配新的 children 结构 {entity=..., relative_pos=...}
-        for _, child_data in pairs(struct.children) do
+        for _, child_data in pairs(portaldata.children) do
             local child = child_data.entity -- <<-- [核心修改] 先从表中取出实体
             if child and child.valid and child.name == "rift-rail-station" then
                 return child
@@ -60,11 +60,11 @@ local function sorted_pair_key(a, b)
 end
 
 --- 更新连接状态 (核心逻辑)
--- @param portal_struct table: 当前传送门数据
--- @param opposite_struct table: 配对传送门数据
+-- @param select_portal table: 当前传送门数据
+-- @param target_portal table: 配对传送门数据
 -- @param connect boolean: true=连接, false=断开
 -- @param player LuaPlayer: (可选) 操作玩家，用于发送提示
-function CybersynSE.update_connection(portal_struct, opposite_struct, connect, player)
+function CybersynSE.update_connection(select_portal, target_portal, connect, player)
     -- [修改] 使用动态检查
     if not is_cybersyn_active() then
         if player then
@@ -74,8 +74,8 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
     end
 
     -- 1. 获取真实的车站实体
-    local station1 = get_station(portal_struct)
-    local station2 = get_station(opposite_struct)
+    local station1 = get_station(select_portal)
+    local station2 = get_station(target_portal)
 
     if not (station1 and station1.valid and station2 and station2.valid) then
         if player then
@@ -123,12 +123,12 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
             -- 准备写入 se_elevators 表的数据
             local ground_portal, orbit_portal
             -- 简单按地表 ID 排序，小的当“地面”，大的当“轨道”
-            if portal_struct.surface.index < opposite_struct.surface.index then
-                ground_portal = portal_struct
-                orbit_portal = opposite_struct
+            if select_portal.surface.index < target_portal.surface.index then
+                ground_portal = select_portal
+                orbit_portal = target_portal
             else
-                ground_portal = opposite_struct
-                orbit_portal = portal_struct
+                ground_portal = target_portal
+                orbit_portal = select_portal
             end
 
             local s_ground = get_station(ground_portal)
@@ -177,7 +177,7 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
                 remote.call("cybersyn", "write_global", { [entity_pair_key] = connection_data }, "connected_surfaces", surface_pair_key)
             end
 
-            log_cs("[RiftRail:CybersynCompat] [连接] " .. portal_struct.name .. " <--> " .. opposite_struct.name)
+            log_cs("[RiftRail:CybersynCompat] [连接] " .. select_portal.name .. " <--> " .. target_portal.name)
             success = true
         else
             -- 断开连接：清理数据
@@ -193,19 +193,19 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
     end)
 
     if success then
-        portal_struct.cybersyn_enabled = connect -- [注意] control.lua/state.lua 中使用的是 cybersyn_enabled
-        opposite_struct.cybersyn_enabled = connect
+        select_portal.cybersyn_enabled = connect -- [注意] control.lua/state.lua 中使用的是 cybersyn_enabled
+        target_portal.cybersyn_enabled = connect
 
         -- [修改] 改为全局提示，所有玩家都能看到
         -- 玩家通知（带双向 GPS 标签，受统一设置控制）
-        local name1 = portal_struct.name or "RiftRail"
-        local pos1 = portal_struct.shell.position
-        local surface1 = portal_struct.shell.surface.name
+        local name1 = select_portal.name or "RiftRail"
+        local pos1 = select_portal.shell.position
+        local surface1 = select_portal.shell.surface.name
         local gps1 = "[gps=" .. pos1.x .. "," .. pos1.y .. "," .. surface1 .. "]"
 
-        local name2 = opposite_struct.name or "RiftRail"
-        local pos2 = opposite_struct.shell.position
-        local surface2 = opposite_struct.shell.surface.name
+        local name2 = target_portal.name or "RiftRail"
+        local pos2 = target_portal.shell.position
+        local surface2 = target_portal.shell.surface.name
         local gps2 = "[gps=" .. pos2.x .. "," .. pos2.y .. "," .. surface2 .. "]"
 
         for _, player in pairs(game.connected_players) do
@@ -222,22 +222,22 @@ function CybersynSE.update_connection(portal_struct, opposite_struct, connect, p
 end
 
 --- 处理传送门销毁
-function CybersynSE.on_portal_destroyed(portal_struct)
+function CybersynSE.on_portal_destroyed(select_portal)
     -- [修改] 使用动态检查
     if not is_cybersyn_active() then
         return
     end
 
     -- 如果已连接，则尝试断开
-    if portal_struct and portal_struct.cybersyn_enabled then
-        local opposite_struct = State.get_struct_by_id(portal_struct.paired_to_id)
-        local station = get_station(portal_struct)
+    if select_portal and select_portal.cybersyn_enabled then
+        local target_portal = State.get_portaldata_by_id(select_portal.paired_to_id)
+        local station = get_station(select_portal)
 
         -- 即使对侧不存在，也需要清理自己的数据
         if station and station.valid then
             -- 尝试完整断开
-            if opposite_struct then
-                CybersynSE.update_connection(portal_struct, opposite_struct, false, nil)
+            if target_portal then
+                CybersynSE.update_connection(select_portal, target_portal, false, nil)
             else
                 -- 紧急清理模式 (只清理自己)
                 pcall(remote.call, "cybersyn", "write_global", nil, "se_elevators", station.unit_number)
@@ -247,25 +247,25 @@ function CybersynSE.on_portal_destroyed(portal_struct)
 end
 
 --- 处理克隆/移动 (支持 SE 飞船起飞降落)
-function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
+function CybersynSE.on_portal_cloned(old_portaldata, new_portaldata, is_landing)
     -- [修改] 使用动态检查
     if not is_cybersyn_active() then
         return
     end
 
     -- 只有旧实体开启了连接才处理
-    if not (old_struct and new_struct and old_struct.cybersyn_enabled) then
+    if not (old_portaldata and new_portaldata and old_portaldata.cybersyn_enabled) then
         return
     end
 
     -- 获取配对目标
-    local partner = State.get_struct_by_id(new_struct.paired_to_id)
+    local partner = State.get_portaldata_by_id(new_portaldata.paired_to_id)
     if not partner then
         return
     end
 
     -- 1. 无条件注销旧连接
-    CybersynSE.update_connection(old_struct, partner, false, nil)
+    CybersynSE.update_connection(old_portaldata, partner, false, nil)
 
     -- 2. 判断逻辑
     local is_takeoff = false
@@ -273,14 +273,14 @@ function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
     if is_landing then
         -- 降落：静默处理，保持 enabled=true，但不发送通知，隐身模式
         log_cs("[RiftRail:CybersynCompat] 飞船降落，维持连接状态 (静默)。")
-        new_struct.cybersyn_enabled = true
+        new_portaldata.cybersyn_enabled = true
         -- 这里什么都不做，不向 Cybersyn 注册，仅仅保留开关状态
     else
         -- 起飞或搬家：注册新 ID
-        CybersynSE.update_connection(new_struct, partner, true, nil)
+        CybersynSE.update_connection(new_portaldata, partner, true, nil)
         log_cs("[RiftRail:CybersynCompat] 实体迁移，重新注册连接。")
 
-        if string.find(new_struct.surface.name, "spaceship") then
+        if string.find(new_portaldata.surface.name, "spaceship") then
             is_takeoff = true
         end
     end
@@ -289,9 +289,9 @@ function CybersynSE.on_portal_cloned(old_struct, new_struct, is_landing)
         for _, player in pairs(game.players) do
             if settings.get_player_settings(player)["rift-rail-show-logistics-notifications"].value then
                 if is_landing then
-                    player.print({ "messages.rift-rail-cybersyn-landing", new_struct.name })
+                    player.print({ "messages.rift-rail-cybersyn-landing", new_portaldata.name })
                 elseif is_takeoff then
-                    player.print({ "messages.rift-rail-cybersyn-takeoff", new_struct.name })
+                    player.print({ "messages.rift-rail-cybersyn-takeoff", new_portaldata.name })
                 end
             end
         end

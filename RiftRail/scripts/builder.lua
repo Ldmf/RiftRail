@@ -331,9 +331,9 @@ local function clear_trains_inside(shell_entity)
     })
 
     -- 强制销毁
-    for _, carriage in pairs(trains) do
-        if carriage and carriage.valid then
-            carriage.destroy()
+    for _, car in pairs(trains) do
+        if car and car.valid then
+            car.destroy()
         end
     end
 end
@@ -417,21 +417,21 @@ function Builder.on_destroy(event)
         end
     end
 
-    -- 开始查找 struct 以执行精准销毁
+    -- 开始查找 portaldata 以执行精准销毁
     local target_unit_number = nil
-    local struct = State.get_struct(entity)
-    if struct then
-        target_unit_number = struct.unit_number
+    local portaldata = State.get_portaldata(entity)
+    if portaldata then
+        target_unit_number = portaldata.unit_number
     end
 
     -- 路径 A: "精准销毁"
     if target_unit_number and storage.rift_rails and storage.rift_rails[target_unit_number] then
-        log_debug("[Destroy] Path A: Precise cleanup based on struct.")
+        log_debug("[Destroy] Path A: Precise cleanup based on portaldata.")
         local data = storage.rift_rails[target_unit_number]
 
         if data.paired_to_id then
-            -- 【性能优化】使用 State.get_struct_by_id (它现在很快)
-            local partner = State.get_struct_by_id(data.paired_to_id)
+            -- 【性能优化】使用 State.get_portaldata_by_id (它现在很快)
+            local partner = State.get_portaldata_by_id(data.paired_to_id)
             if partner then
                 partner.paired_to_id = nil
                 if Logic.set_mode then
@@ -474,7 +474,7 @@ function Builder.on_destroy(event)
     end
 
     -- 路径 B: 如果前面的"精准销毁"失败了
-    log_debug("[Destroy] Path B: Fallback cleanup (struct not found).")
+    log_debug("[Destroy] Path B: Fallback cleanup (portaldata not found).")
     -- 我们不再需要旧的“暴力扫荡”了，因为 final_cleanup 已经足够精准且能处理所有情况
     -- 4: 在路径 B 的出口调用清理
     final_cleanup()

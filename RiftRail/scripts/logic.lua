@@ -25,7 +25,7 @@ local function refresh_all_guis()
         local opened = player.opened
 
         -- 情况 1: 如果 opened 是实体 (比如其他模组直接 opened 实体，或者是兼容旧版)
-        if opened and opened.valid and opened.object_name == "LuaEntity" and State.get_struct(opened) then
+        if opened and opened.valid and opened.object_name == "LuaEntity" and State.get_portaldata(opened) then
             GUI.build_or_update(player, opened)
 
             -- 情况 2: 如果 opened 是我们的 GUI Frame
@@ -34,10 +34,10 @@ local function refresh_all_guis()
             local unit_number = opened.tags.unit_number
             if unit_number then
                 -- 查找对应的实体数据
-                local struct = State.get_struct_by_unit_number(unit_number)
-                if struct and struct.shell and struct.shell.valid then
+                local portaldata = State.get_portaldata_by_unit_number(unit_number)
+                if portaldata and portaldata.shell and portaldata.shell.valid then
                     -- 传入实体进行刷新
-                    GUI.build_or_update(player, struct.shell)
+                    GUI.build_or_update(player, portaldata.shell)
                 end
             end
         end
@@ -45,13 +45,13 @@ local function refresh_all_guis()
 end
 
 -- 辅助函数：构建包含图标的富文本显示名称
-local function build_display_name(struct)
+local function build_display_name(portaldata)
     local richtext = ""
-    if struct and struct.icon and struct.icon.type and struct.icon.name then
-        richtext = "[" .. struct.icon.type .. "=" .. struct.icon.name .. "] "
+    if portaldata and portaldata.icon and portaldata.icon.type and portaldata.icon.name then
+        richtext = "[" .. portaldata.icon.type .. "=" .. portaldata.icon.name .. "] "
     end
-    if struct then
-        richtext = richtext .. struct.name
+    if portaldata then
+        richtext = richtext .. portaldata.name
     end
     return richtext
 end
@@ -60,30 +60,30 @@ end
 -- 物理状态管理 (精准定点清除版)
 -- ============================================================================
 -- 物理状态管理 (带 children 列表同步)
-local function update_collider_state(struct)
-    if not (struct and struct.shell and struct.shell.valid) then
+local function update_collider_state(portaldata)
+    if not (portaldata and portaldata.shell and portaldata.shell.valid) then
         return
     end
 
     -- 1. 清理旧的碰撞器 (同时从户口本上除名)
-    if struct.children then
+    if portaldata.children then
         -- 使用倒序遍历，安全地在循环中移除元素
-        for i = #struct.children, 1, -1 do
-            local child_data = struct.children[i]
+        for i = #portaldata.children, 1, -1 do
+            local child_data = portaldata.children[i]
             if child_data and child_data.entity and child_data.entity.valid and child_data.entity.name == "rift-rail-collider" then
                 -- 从地图上销毁
                 child_data.entity.destroy()
                 -- 从 children 列表中移除
-                table.remove(struct.children, i)
+                table.remove(portaldata.children, i)
             end
         end
     end
 
     -- 2. 如果是 [入口] 或 [中立] 模式，则创建新的碰撞器并登记
-    if struct.mode == "entry" or struct.mode == "neutral" then
-        local surface = struct.shell.surface
-        local center = struct.shell.position
-        local direction = struct.shell.direction
+    if portaldata.mode == "entry" or portaldata.mode == "neutral" then
+        local surface = portaldata.shell.surface
+        local center = portaldata.shell.position
+        local direction = portaldata.shell.direction
 
         -- 计算碰撞器的精确相对坐标
         local relative_pos = { x = 0, y = -2 } -- 基准 (North)
@@ -102,12 +102,12 @@ local function update_collider_state(struct)
         local new_collider = surface.create_entity({
             name = "rift-rail-collider",
             position = target_pos,
-            force = struct.shell.force,
+            force = portaldata.shell.force,
         })
 
         -- [核心修复] 将新创建的碰撞器登记到 children 列表中
-        if new_collider and struct.children then
-            table.insert(struct.children, {
+        if new_collider and portaldata.children then
+            table.insert(portaldata.children, {
                 entity = new_collider,
                 relative_pos = relative_pos,
             })
@@ -121,7 +121,7 @@ end
 -- ============================================================================
 function Logic.update_name(player_index, portal_id, new_string)
     local player = game.get_player(player_index)
-    local my_data = State.get_struct_by_id(portal_id)
+    local my_data = State.get_portaldata_by_id(portal_id)
     if not (player and my_data) then
         return
     end
@@ -179,7 +179,7 @@ function Logic.set_mode(player_index, portal_id, mode, skip_sync)
         player = game.get_player(player_index)
     end
 
-    local my_data = State.get_struct_by_id(portal_id)
+    local my_data = State.get_portaldata_by_id(portal_id)
     if not my_data then
         return
     end
@@ -208,7 +208,7 @@ function Logic.set_mode(player_index, portal_id, mode, skip_sync)
 
     -- 智能同步配对对象
     if not skip_sync and my_data.paired_to_id then
-        local partner = State.get_struct_by_id(my_data.paired_to_id)
+        local partner = State.get_portaldata_by_id(my_data.paired_to_id)
         if partner then
             local partner_mode = "neutral"
             if mode == "entry" then
@@ -234,8 +234,8 @@ end
 -- ============================================================================
 function Logic.pair_portals(player_index, source_id, target_id)
     local player = game.get_player(player_index)
-    local source = State.get_struct_by_id(source_id)
-    local target = State.get_struct_by_id(target_id)
+    local source = State.get_portaldata_by_id(source_id)
+    local target = State.get_portaldata_by_id(target_id)
 
     if not (source and target) then
         return
@@ -277,12 +277,12 @@ end
 -- ============================================================================
 function Logic.unpair_portals(player_index, portal_id)
     local player = game.get_player(player_index)
-    local source = State.get_struct_by_id(portal_id)
+    local source = State.get_portaldata_by_id(portal_id)
     if not source or not source.paired_to_id then
         return
     end
 
-    local target = State.get_struct_by_id(source.paired_to_id)
+    local target = State.get_portaldata_by_id(source.paired_to_id)
     local target_name = target and target.name or "Unknown"
 
     source.paired_to_id = nil
@@ -304,12 +304,12 @@ end
 -- ============================================================================
 function Logic.open_remote_view(player_index, portal_id)
     local player = game.get_player(player_index)
-    local my_data = State.get_struct_by_id(portal_id)
+    local my_data = State.get_portaldata_by_id(portal_id)
     if not (player and my_data and my_data.paired_to_id) then
         return
     end
 
-    local target = State.get_struct_by_id(my_data.paired_to_id)
+    local target = State.get_portaldata_by_id(my_data.paired_to_id)
     if target and target.shell and target.shell.valid then
         player.opened = nil
         player.set_controller({
@@ -326,7 +326,7 @@ end
 -- ============================================================================
 function Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
     local player = game.get_player(player_index)
-    local my_data = State.get_struct_by_id(portal_id)
+    local my_data = State.get_portaldata_by_id(portal_id)
 
     if not (player and my_data) then
         return
@@ -335,7 +335,7 @@ function Logic.set_cybersyn_enabled(player_index, portal_id, enabled)
     -- 获取配对对象
     local partner = nil
     if my_data.paired_to_id then
-        partner = State.get_struct_by_id(my_data.paired_to_id)
+        partner = State.get_portaldata_by_id(my_data.paired_to_id)
     end
 
     if not partner then
@@ -360,14 +360,14 @@ end
 -- ==========================================================================
 function Logic.set_ltn_enabled(player_index, portal_id, enabled)
     local player = game.get_player(player_index)
-    local my_data = State.get_struct_by_id(portal_id)
+    local my_data = State.get_portaldata_by_id(portal_id)
     if not (player and my_data) then
         return
     end
 
     local partner = nil
     if my_data.paired_to_id then
-        partner = State.get_struct_by_id(my_data.paired_to_id)
+        partner = State.get_portaldata_by_id(my_data.paired_to_id)
     end
     if not partner then
         player.print({ "messages.rift-rail-error-ltn-unpaired" })

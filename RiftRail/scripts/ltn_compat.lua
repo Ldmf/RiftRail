@@ -41,9 +41,9 @@ local function compute_network_id(a, b, override)
 end
 
 -- 从 RiftRail 结构体提取内部站实体
-local function get_station(struct)
-    if struct.children then
-        for _, child_data in pairs(struct.children) do
+local function get_station(portaldata)
+    if portaldata.children then
+        for _, child_data in pairs(portaldata.children) do
             local child = child_data.entity
             if child and child.valid and child.name == "rift-rail-station" then
                 return child
@@ -62,7 +62,7 @@ function LTN.init(dependencies)
 end
 
 -- 切换连接状态
-function LTN.update_connection(portal_struct, opposite_struct, connect, player)
+function LTN.update_connection(select_portal, target_portal, connect, player)
     if not is_ltn_active() then
         if player then
             player.print({ "messages.rift-rail-error-ltn-not-found" })
@@ -70,8 +70,8 @@ function LTN.update_connection(portal_struct, opposite_struct, connect, player)
         return
     end
 
-    local station1 = get_station(portal_struct)
-    local station2 = get_station(opposite_struct)
+    local station1 = get_station(select_portal)
+    local station2 = get_station(target_portal)
     if not (station1 and station1.valid and station2 and station2.valid) then
         if player then
             player.print({ "messages.rift-rail-error-ltn-no-station" })
@@ -81,7 +81,7 @@ function LTN.update_connection(portal_struct, opposite_struct, connect, player)
 
     local ok, err = pcall(function()
         if connect then
-            local nid = compute_network_id(station1, station2, tonumber(portal_struct.ltn_network_id) or -1)
+            local nid = compute_network_id(station1, station2, tonumber(select_portal.ltn_network_id) or -1)
             remote.call("logistic-train-network", "connect_surfaces", station1, station2, nid)
             ltn_log("[LTNCompat] 已建立跨面连接 network_id=" .. nid)
         else
@@ -97,18 +97,18 @@ function LTN.update_connection(portal_struct, opposite_struct, connect, player)
         return
     end
 
-    portal_struct.ltn_enabled = connect
-    opposite_struct.ltn_enabled = connect
+    select_portal.ltn_enabled = connect
+    target_portal.ltn_enabled = connect
 
     -- 玩家通知（带双向 GPS 标签，受设置控制）
-    local name1 = portal_struct.name or "RiftRail"
-    local pos1 = portal_struct.shell.position
-    local surface1 = portal_struct.shell.surface.name
+    local name1 = select_portal.name or "RiftRail"
+    local pos1 = select_portal.shell.position
+    local surface1 = select_portal.shell.surface.name
     local gps1 = "[gps=" .. pos1.x .. "," .. pos1.y .. "," .. surface1 .. "]"
 
-    local name2 = opposite_struct.name or "RiftRail"
-    local pos2 = opposite_struct.shell.position
-    local surface2 = opposite_struct.shell.surface.name
+    local name2 = target_portal.name or "RiftRail"
+    local pos2 = target_portal.shell.position
+    local surface2 = target_portal.shell.surface.name
     local gps2 = "[gps=" .. pos2.x .. "," .. pos2.y .. "," .. surface2 .. "]"
 
     for _, p in pairs(game.connected_players) do
@@ -123,14 +123,14 @@ function LTN.update_connection(portal_struct, opposite_struct, connect, player)
     end
 end
 
-function LTN.on_portal_destroyed(portal_struct)
+function LTN.on_portal_destroyed(select_portal)
     if not is_ltn_active() then
         return
     end
-    if portal_struct and portal_struct.ltn_enabled then
-        local opp = State.get_struct_by_id(portal_struct.paired_to_id)
+    if select_portal and select_portal.ltn_enabled then
+        local opp = State.get_portaldata_by_id(select_portal.paired_to_id)
         if opp then
-            LTN.update_connection(portal_struct, opp, false, nil)
+            LTN.update_connection(select_portal, opp, false, nil)
         else
             -- 无对端时无需显式断开，LTN在实体删除时不要求调用
             ltn_log("[LTNCompat] 仅标记断开，无需显式清理")

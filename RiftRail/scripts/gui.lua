@@ -92,7 +92,7 @@ function GUI.build_or_update(player, entity)
     end
 
     -- 1. 获取数据
-    local my_data = State.get_struct(entity)
+    local my_data = State.get_portaldata(entity)
     if not my_data then
         log_gui("[RiftRail:GUI] 错误: 无法找到实体关联的数据。")
         return
@@ -195,7 +195,7 @@ function GUI.build_or_update(player, entity)
     status_flow.add({ type = "label", caption = { "gui.rift-rail-status-label" } })
 
     if my_data.paired_to_id then
-        local partner = State.get_struct_by_id(my_data.paired_to_id)
+        local partner = State.get_portaldata_by_id(my_data.paired_to_id)
         if partner then
             status_flow.add({
                 type = "label",
@@ -224,7 +224,7 @@ function GUI.build_or_update(player, entity)
     -- 创建一个表来存 ID
     local dropdown_ids = {}
 
-    local all_portals = State.get_all_structs()
+    local all_portals = State.get_all_portaldatas()
 
     for _, p_data in pairs(all_portals) do
         -- 排除自己，排除已配对的(除非是当前配对对象)
@@ -393,7 +393,7 @@ function GUI.build_or_update(player, entity)
 
     -- 10. 摄像头预览窗口 (修复版：照搬传送门布局)
     if my_data.paired_to_id and player_settings.show_preview then
-        local partner = State.get_struct_by_id(my_data.paired_to_id)
+        local partner = State.get_portaldata_by_id(my_data.paired_to_id)
         if partner and partner.shell and partner.shell.valid then
             -- 标题 Label
             inner_flow.add({
@@ -446,7 +446,7 @@ function GUI.handle_click(event)
 
     local unit_number = frame.tags.unit_number
     -- [修正] 使用 unit_number 直接查找，而不是查自定义 ID
-    local my_data = State.get_struct_by_unit_number(unit_number)
+    local my_data = State.get_portaldata_by_unit_number(unit_number)
     if not my_data then
         return
     end
@@ -571,7 +571,7 @@ function GUI.handle_switch_state_changed(event)
         return
     end
     -- [修正]
-    local my_data = State.get_struct_by_unit_number(frame.tags.unit_number)
+    local my_data = State.get_portaldata_by_unit_number(frame.tags.unit_number)
     if not my_data then
         return
     end
@@ -603,7 +603,7 @@ function GUI.handle_checked_state_changed(event)
             local frame = player.gui.screen.rift_rail_main_frame
             if frame then
                 -- [修正]
-                local my_data = State.get_struct_by_unit_number(frame.tags.unit_number)
+                local my_data = State.get_portaldata_by_unit_number(frame.tags.unit_number)
                 GUI.build_or_update(player, my_data.shell) -- 传入实体刷新
             end
         end
