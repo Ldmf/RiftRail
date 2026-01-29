@@ -67,15 +67,6 @@ data:extend({
         localised_name = { "mod-setting-name.rift-rail-placement-interval" },
         localised_description = { "mod-setting-description.rift-rail-placement-interval" },
     },
-    {
-        type = "bool-setting",
-        name = "rift-rail-enabled-data-updates",
-        setting_type = "startup",
-        default_value = true,
-        order = "a",
-        localised_name = { "mod-setting-name.rift-rail-enabled-data-updates" },
-        localised_description = { "mod-setting-description.rift-rail-enabled-data-updates" }
-    },
     -- LTN 防堵塞清理机制开关
     {
         type = "bool-setting",
@@ -96,5 +87,14 @@ data:extend({
         order = "c-b",
         localised_name = { "mod-setting-name.rift-rail-ltn-teleported-name" },
         localised_description = { "mod-setting-description.rift-rail-ltn-teleported-name" },
+    },
+    {
+        type = "string-setting",
+        name = "rift-rail-mod-integration",
+        setting_type = "startup",
+        default_value = "none", -- only one value can be active
+        allowed_values = { "none", "base", "space-age", "krastorio2", "space-exploration", "se-k2" },
+        order = "a[riftrail]-a[mod-integration]",
+        description = "Select which mod integration to enable (only one can be active)"
     }
 })
