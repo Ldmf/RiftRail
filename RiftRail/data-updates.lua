@@ -14,10 +14,11 @@ if has_se then
 end
 
 if has_k2 then
-    require("updates.k2")
+    require("updates.k2") -- add K2 integration
 end
 
 if has_se_k2 then
     require("updates.se-k2") -- add SE + Krastorio2 integration
 end
+
 
