@@ -1,8 +1,4 @@
--- RiftRail/data-updates.lua
--- intigrating updates from other mods
--- e.g., space-age mod integration and so on
-
---
+-- Only load compatibility updates if the relevant mods are present and the corresponding setting is enabled
 
 local has_sa = mods["space-age"]
 local has_se = mods["space-exploration"]
@@ -24,3 +20,4 @@ end
 if has_se_k2 then
     require("updates.se-k2") -- add SE + Krastorio2 integration
 end
+
