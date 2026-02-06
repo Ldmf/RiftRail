@@ -25,6 +25,7 @@ require("prototypes.entities.main")
 require("prototypes.entities.lamp")
 require("prototypes.entities.collider")
 require("prototypes.entities.blocker")
+require("prototypes.entities.leader-train")
 
 require("prototypes.internal.station")
 require("prototypes.internal.signal")
